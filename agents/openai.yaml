@@ -1,0 +1,4 @@
+interface:
+  display_name: "展会大数据报告"
+  short_description: "基于 HandaaS 展会大数据 MCP，生成展会参与 / 展馆查询 / 展会查询 / 展商查询的专业 HTML / Markdown / JSON 报告，支持企业参展与市场检索两种模式。"
+  default_prompt: "使用 $exhibition-report 生成「企业名称」的展会大数据报告（或按区域/行业做市场检索）：自动补全企业全称，调用展会 MCP 工具，产出 HTML + Markdown + JSON 三件套。"
