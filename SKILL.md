@@ -1,6 +1,6 @@
 ---
 name: exhibition-report
-description: Use for generating a professional exhibition big-data report (展会大数据报告) from the HandaaS exhibition MCP — covering 展会参与、展馆查询、展会查询、展商查询. Trigger when users ask for “展会大数据报告”, “展会分析报告”, “查一家公司的参展记录”, “展会参与”, “展馆查询”, “展会查询”, “展商查询”, or “企业参展画像”. Infer the canonical enterprise name (auto-fuzzy-completing a keyword), pick the right MCP tools, and produce HTML + Markdown + JSON reports automatically. Also supports market search mode (by venue region / fair region / fair industries / exhibition keyword) independent of a specific enterprise.
+description: Use for generating a professional exhibition big-data report (展会大数据报告) from the HandaaS exhibition MCP — covering 展会参与、展馆查询、展会查询、展商查询、指定展会参展企业. Trigger when users ask for “展会大数据报告”, “展会分析报告”, “查一家公司的参展记录”, “展会参与”, “展馆查询”, “展会查询”, “展商查询”, “某届展会有哪些参展企业”, or “企业参展画像”. Infer the canonical enterprise name (auto-fuzzy-completing a keyword), pick the right MCP tools, and produce HTML + Markdown + JSON reports automatically. Also supports fair-only search and a search-derived fair ID to exhibitors workflow. MCP 服务名称触发词：展会行业情报。
 ---
 
 # 展会大数据报告
@@ -26,7 +26,29 @@ description: Use for generating a professional exhibition big-data report (展�
 - 报告所有章节标题、指标卡标签必须用中文；`core_analysis.sections` 的 `title` 字段必须中文，不可显示英文 key（如 `holders`、`investments`）。
 - 指标值必须可读化：金额格式为"X 亿/万 + 币种"，地址拼接省市区，比率显示百分号。详见 `references/report-output.md` 的「数据格式约束」。
 
+## 付费调用纪律（先规划后查询）
+
+每次真实调用均按接口/页计费，必须先规划再查询，不得默认全量拉取：
+
+1. 每一次业务/工具调用、每一页都可能收费。想算 total / 页数不是无限制取全量的授权。
+2. 调用前先推导：需要哪些结论、需要哪些数据维度、工具与参数计划、必要页数与最大调用预算。total 未知时，第一个必要的明细页同时完成 total 发现并直接作为报告数据，绝不为此多付一次（首屏响应必须复用，不重复拉取）。
+3. 明细接口仅取结论、图表、代表性记录或用户明确的全量/计数需求所需的行数。只有用户明确要全面报告时才跑全面管线，绝不因为工具存在就全部调用。
+4. 在 schema 允许范围内用合理的大 pageSize（≤50），取得所需证据 / 样本即停，且不超出显式预算。更多调用必须有“缺失结论”的正当理由，不能只为填满章节。不得用样本分布冒充全量结论。
+5. 复用当前任务 / 报告内的相同请求（含首屏规划数据）；不要为渲染重跑 compose/MCP，用已保存 JSON 本地重渲染。不自动重试、不重复拉取同一明细。任何补充查询必须先列缺口并复用已返回记录。
+6. `total_pages` / `remaining_pages` 是按请求 pageSize 的估算；短而非空页面仍有剩余记录时在预算内继续。只有稳定有效的 total 等于实际扫描条数才算完整采集；错误、提前空页、重复页、total 变化/缺失、数量溢出均视为不完整。显式预算 / 样本停止即部分采集，绝不宣称全量。
+7. 预算不足以支撑用户要求的关键结论时：先说明证据缺口与预计需要追加的调用数，再请求扩大授权（提高 `--max-pages`）；不静默降级结论，也不擅自扩大计费范围。
+
+分页收集默认一次明细调用预算 `--max-pages 1`（每明细接口）；明细接口的 total、实际取数、完整性披露写入报告 `data_source.pagination`，报告级去重统计写入 `data_source.call_usage`。
+
+本 skill 的分页口径：
+- 可分页并受预算控制：`exhibition_bigdata_exhibition_participation`、`exhibition_bigdata_exhibitor_search`、`exhibition_bigdata_exhibition_exhibitors`（均支持 pageIndex+pageSize，pageSize≤50）；`exhibition_bigdata_exhibition_search` 参考表仅列 pageIndex，但线上调用证据显示同样接受 pageSize，故按 pageSize 分页。
+- 展馆查询 `exhibition_bigdata_exhibition_venue_search` 的上游服务同样支持 `pageIndex` 与 `pageSize`（默认 10、最多 50）；按 `total` 估页，在 `--max-pages` 预算内采集并披露数量，不能因旧参考表漏列参数而绕过分页与预算。
+- 身份解析绝不翻页：`exhibition_bigdata_fuzzy_search` 仅用于企业全称补全，固定单页。
+- 两跳模式第一跳（展会检索取 fairId 候选）固定 1 页预算：`--fair-result-index` 只从第一页候选选择，不因选择扩大付费调用；仅第二跳（参展企业明细）受 `--max-pages` 控制。
+
 ## MCP 服务入口
+
+- MCP 服务当前名称：展会行业情报（连接仍使用原服务目录标识）。
 
 - 上游 MCP 项目：`handaas-mcp-server/exhibition-mcp-server`（位于 `HANDAAS_MCP_SERVER_ROOT` 或本仓库同级目录）。
 - Remote MCP：设置环境变量 `EXHIBITION_MCP_URL`（streamable-http），可选 `EXHIBITION_MCP_TOKEN`。
@@ -45,6 +67,8 @@ description: Use for generating a professional exhibition big-data report (展�
 | 查一家公司的展会参与报告 | 企业参展模式；`compose_report.py --enterprise ...` |
 | 查某地区展馆 / 办展资源 | 市场检索模式；`compose_report.py --venue-region ...` |
 | 查某区域 / 行业的展会列表 | 市场检索模式；`compose_report.py --search ...` |
+| 只查展会、不连带查展商 | 展会单项检索；`compose_report.py --search ... --search-target exhibition` |
+| 查指定届次的参展企业 | 两跳模式；`compose_report.py --fair-exhibitors ... --fair-result-index N` |
 | 查某区域 / 行业的展商 | 市场检索模式；`compose_report.py --fair-region ... / --fair-industries ...` |
 | 组合检索（既看企业参展又看市场） | `compose_report.py --enterprise ... --venue-region ...` |
 | 只给企业关键词（不是全称） | 先 `exhibition_bigdata_fuzzy_search` 补全全称，再查展会参与 |
@@ -55,7 +79,7 @@ description: Use for generating a professional exhibition big-data report (展�
 
 1. **确定模式**：若用户提供企业主体走“企业参展模式”；若提供区域 / 行业 / 关键词走“市场检索模式”；两者也可组合。
 2. **解析企业全称**（企业参展模式）：若输入含“公司/集团/有限/院/厂/中心/事务所/合作社/合伙”等后缀视为全称；否则调 `exhibition_bigdata_fuzzy_search` 取首个命中。
-3. **调用展会工具**：`exhibition_bigdata_exhibition_participation`（企业参展，入参 `matchKeyword`（企业全称）+ `keywordType`，分页）、`exhibition_bigdata_exhibition_venue_search`（展馆，入参 `pavilionRegion` 必填）、`exhibition_bigdata_exhibition_search`（展会，入参 `matchKeyword`）、`exhibition_bigdata_exhibitor_search`（展商，入参 `fairRegion` / `fairIndustries` / `matchKeyword`）。
+3. **调用展会工具**：`exhibition_bigdata_exhibition_participation`（企业参展）、`exhibition_bigdata_exhibition_venue_search`（展馆）、`exhibition_bigdata_exhibition_search`（展会）、`exhibition_bigdata_exhibitor_search`（市场展商）；查询指定届次参展企业时，必须先从展会查询实际结果取得 `_id`，再调用 `exhibition_bigdata_exhibition_exhibitors`，不得手写 ID。分页：默认 1 页预算，按 total 驱动、在 `--max-pages` 预算内翻页，超出预算披露未纳入条数而非宣称全量；`exhibition_bigdata_exhibition_venue_search` 无 pageSize 且无文档化固定页大小，保持单页调用并注明当前页口径。
 4. **组装统一报告**：核心分析含展会参与（表）、展馆查询（表）、展会查询（表）、展商查询（表）（按检索命中的维度呈现，空维度自动跳过）。
 5. **渲染三件套**：`compose_report.py --enterprise ... --output ... --report-output ...` 直接产出 JSON + HTML + Markdown；或 `render_report.py --input ... --output ...` 重渲染。
 6. **返回路径**：返回 JSON、HTML、Markdown 文件路径，以及企业全称映射与数据口径（含模式标注）。
@@ -91,6 +115,25 @@ python scripts/compose_report.py \
   --output output/exhibition_market.json \
   --report-output output/exhibition_market.html
 
+# 展会单项检索：不连带调用展商端点
+python scripts/compose_report.py \
+  --search "中国国际线缆及线材展览会" \
+  --search-target exhibition \
+  --page-size 10 \
+  --max-pages 1 \
+  --output output/fair_search.json \
+  --report-output output/fair_search.html
+
+# 指定展会参展企业：先搜索（第一跳固定第 1 页预算）再选择第 1 条真实结果并以其 _id 查询
+# --fair-result-index 候选仅来自第一页，不为此扩大付费调用；第二跳参展企业受 --max-pages 控制
+python scripts/compose_report.py \
+  --fair-exhibitors "中国国际线缆及线材展览会" \
+  --fair-result-index 1 \
+  --page-size 10 \
+  --max-pages 1 \
+  --output output/fair_exhibitors.json \
+  --report-output output/fair_exhibitors.html
+
 # 手动调单个工具
 python scripts/mcp_client.py call-tool \
   --tool exhibition_bigdata_exhibition_participation \
@@ -109,7 +152,7 @@ python scripts/render_report.py --input output/exhibition.json --output output/e
 - `caliber`：匹配对象、匹配方式（含模式标注）、数据范围、产品、局限。
 - `core_analysis`：展会参与（表）、展馆查询（表）、展会查询（表）、展商查询（表）。
 - `representative_records`：代表性展会 / 展商记录。
-- `insights`：结构化解读（参展活跃度 / 参展行业集中度 / 市场展会规模 / 展商密度 / 展馆资源）。
-- `data_source`：MCP server、数据产品、生成时间、是否 dry-run、模式（enterprise / market_search）。
+- `insights`：结构化事实摘要（上游收录数、当前页分布、开放标记及其核验边界）；不由记录数推断营销投入、品牌建设、行业活跃度或当前开展状态。
+- `data_source`：MCP server、数据产品、生成时间、是否 dry-run、模式（enterprise / market_search）；真实调用时还含 `pagination`（每个分页接口的 total、实际请求页数、未纳入条数与完整性披露）与 `call_usage`（报告内请求执行 / 复用计数）。
 
 若 API 调用失败，明确报出缺失的配置 / 缺失的工具 / MCP 错误 / 参数校验错误 / 上游网络错误，给出 dry-run 命令或配置步骤，绝不暴露密钥。

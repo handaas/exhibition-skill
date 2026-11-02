@@ -54,8 +54,11 @@ product_id：`675cea1f0e009a9ea37edaa1`。
 | `pavilionRegion` | string | 是 | 展馆所在区域 |
 | `matchKeyword` | string | 否 | 展馆名称关键词（可选） |
 | `pageIndex` | int | 否 | 从 1 开始（默认 1） |
+| `pageSize` | int | 否 | 默认 10，最多 50；与 `pageIndex` 一起传给上游 |
 
 返回（list + `total`）：`venueName`（展馆名称）、`venueRegion`（所在区域）、`venueAddress`（地址）、`venueArea`（展馆面积）、`hallCount`（展厅数量）等。
+
+> 分页说明：上游服务签名支持 `pageIndex` 与 `pageSize`；按 `total` 计算预计页数，在预先规划的 `--max-pages` 预算内逐页采集，默认仅 1 页。首次返回同时用于分析与总量发现，不重查首页；未取全时明确披露剩余量。
 
 product_id：`66e2d2ca428a1f4cd69c1083`。
 
@@ -69,6 +72,7 @@ product_id：`66e2d2ca428a1f4cd69c1083`。
 | --- | --- | --- | --- |
 | `matchKeyword` | string | 否 | 展会名称 / 行业关键词 |
 | `pageIndex` | int | 否 | 从 1 开始（默认 1） |
+| `pageSize` | int | 否 | 线上调用证据显示同样支持（≤50）；参考文档未列出，按线上行为发送 |
 
 返回（list + `total`）：`fairName`（展会名称）、`fairIndustry`（展会行业）、`fairRegion`（展会区域）、`fairDate`（展会日期）、`venueName`（展馆）、`organizer`（主办单位）等。
 
@@ -94,6 +98,22 @@ product_id：`66d5b7e0537c3f61d646c473`。
 
 ---
 
+### 6. `exhibition_bigdata_exhibition_exhibitors` — 指定展会参展企业
+
+用途：按**展会业务 ID**查询该届展会的参展企业。必须先调用展会查询，从实际返回记录取得 `_id`；不得传展会名称、企业 ID、product_id 或手写模板 ID。
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `matchKeyword` | string | 是 | 第一跳展会查询返回的 `_id` |
+| `pageIndex` | int | 否 | 从 1 开始（默认 1） |
+| `pageSize` | int | 否 | 1–50（默认 50） |
+
+返回（list + `total`）：`name`（企业名称）、`nameId`（企业 ID）。上游未声明展位、地区或行业字段时，报告不得补造这些字段。
+
+product_id：`66a2684651cde0f1e3aeff5a`。
+
+---
+
 ## 推荐调用顺序（报告编排）
 
 - **企业参展模式**：
@@ -103,5 +123,10 @@ product_id：`66d5b7e0537c3f61d646c473`。
   1. `exhibition_bigdata_exhibition_venue_search`（按 `pavilionRegion`）→ 展馆。
   2. `exhibition_bigdata_exhibition_search`（按 `matchKeyword`）→ 展会。
   3. `exhibition_bigdata_exhibitor_search`（按 `fairRegion` / `fairIndustries` / `matchKeyword`）→ 展商。
+- **展会单项检索**：`--search <关键词> --search-target exhibition` 只调用 `exhibition_bigdata_exhibition_search`，不连带调用展商查询。
+- **指定展会参展企业两跳模式**：
+  1. `exhibition_bigdata_exhibition_search` → 当前页真实展会记录及 `_id`（第一跳固定第 1 页预算，候选仅来自第一页，不因选择扩大付费调用）。
+  2. 结果不唯一时，用 `--fair-result-index` 明确选择届次。
+  3. 将所选记录 `_id` 原样传给 `exhibition_bigdata_exhibition_exhibitors`。
 
 > 两种模式可组合：同一份报告同时呈现企业参展与市场检索结果。

@@ -6,12 +6,16 @@ payload rendered into a professional HTML / Markdown report. Supports
 ``--dry-run`` which returns a well-formed skeleton from the bundled sample data
 WITHOUT contacting the MCP.
 
-Two analysis modes are supported:
+Four analysis modes are supported:
   - Enterprise mode (default, requires ``--enterprise``): returns the
     enterprise's exhibition participation, plus optional market context.
   - Market search mode (``--venue-region`` / ``--fair-region`` / ``--fair-industries``
     / ``--search``): returns venues / exhibitors / exhibitions matching the
     given criteria, independent of a specific enterprise.
+  - Fair-only search mode (``--search ... --search-target exhibition``): calls
+    only the exhibition search product.
+  - Fair exhibitors mode (``--fair-exhibitors``): searches for a fair, then
+    passes the selected result's real ``_id`` to the fair-exhibitors product.
 
 This file never prints secrets; MCP credentials live in the server's own .env.
 """
@@ -21,10 +25,9 @@ import argparse
 import datetime as dt
 import json
 import pathlib
-import sys
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from common import REPORT_BANNER, REPORT_TYPE, json_dumps, load_json_file, print_json
+from common import REPORT_BANNER, REPORT_TYPE, attach_pagination, call_tool_once, collect_detail_pages, json_dumps, load_json_file, paid_call_scope, print_json
 import mcp_client
 from render_report import render_html, render_markdown, html_to_pdf
 
@@ -36,6 +39,7 @@ T_PARTICIPATION = "exhibition_bigdata_exhibition_participation"
 T_VENUE = "exhibition_bigdata_exhibition_venue_search"
 T_EXHIBITION = "exhibition_bigdata_exhibition_search"
 T_EXHIBITOR = "exhibition_bigdata_exhibitor_search"
+T_FAIR_EXHIBITORS = "exhibition_bigdata_exhibition_exhibitors"
 
 
 # --------------------------------------------------------------------------- #
@@ -44,44 +48,71 @@ T_EXHIBITOR = "exhibition_bigdata_exhibitor_search"
 
 
 def _is_api_error(value: Any) -> bool:
-    """Detect MCP API error responses (not empty data, but actual failures like 405)."""
+    """Return True for failed MCP/tool envelopes, never for a successful empty result."""
     if value is None:
         return False
     if isinstance(value, str):
-        return any(s in value for s in ("接口调用失败", "查询失败", "状态码：4", "状态码：5"))
+        text = value.strip().lower()
+        return any(marker in text for marker in (
+            "接口调用失败", "查询失败", "状态码：4", "状态码：5",
+            "error executing tool", "validation error", "密钥错误", "鉴权失败",
+        ))
+    if isinstance(value, list):
+        return any(_is_api_error(item) for item in value)
     if isinstance(value, dict):
-        for v in value.values():
-            if isinstance(v, str) and any(s in v for s in ("接口调用失败", "查询失败", "状态码：4", "状态码：5")):
-                return True
+        if value.get("isError") is True or value.get("is_error") is True or value.get("success") is False:
+            return True
+        if value.get("_error") not in (None, "", False) or value.get("error") not in (None, "", False):
+            return True
+        if set(value) <= {"text", "code", "status", "message", "msg"} and value.get("text"):
+            text = str(value.get("text")).strip()
+            if "查询数据为空" in text:
+                return False
+            return True
+        return any(
+            _is_api_error(value.get(key))
+            for key in ("text", "message", "msg", "detail", "content")
+            if key in value
+        )
     return False
 
+
 def _first_list(value: Any) -> List[Any]:
-    if isinstance(value, list):
-        return value
-    if isinstance(value, dict):
-        if _is_api_error(value):
-            return []
-        # Treat upstream empty responses ({"text": "查询数据为空"}) and internal
-        # skip markers ({"_error": "未指定..."}) as empty so tables don't render
-        # a phantom all-"-" row.
-        if set(value.keys()) <= {"text", "error", "code", "_error"} and not any(
-            isinstance(value.get(k), list) for k in ("resultList", "list", "items", "data")
-        ):
-            return []
-        for key in ("resultList", "list", "items", "data"):
-            if isinstance(value.get(key), list):
-                return value[key]
-    if value in (None, "", {}):
+    """Extract business records without turning envelopes into phantom rows."""
+    if _is_api_error(value):
         return []
-    return [value]
+    if isinstance(value, list):
+        cleaned: List[Any] = []
+        for item in value:
+            if _is_api_error(item) or item in (None, "", {}, []):
+                continue
+            if isinstance(item, dict):
+                business_values = [v for k, v in item.items() if k not in {"total", "count", "code", "message", "msg"}]
+                if business_values and all(v in (None, "", "-", [], {}) for v in business_values):
+                    continue
+            cleaned.append(item)
+        return cleaned
+    if isinstance(value, dict):
+        for key in ("resultList", "storeList", "list", "items", "data", "records"):
+            nested = value.get(key)
+            if isinstance(nested, list):
+                return nested
+        envelope_keys = {
+            "text", "message", "msg", "code", "status", "success", "total", "count",
+            "pageIndex", "pageSize", "isError", "is_error", "content", "structuredContent",
+            "structured_content", "_error", "error",
+        }
+        if set(value) <= envelope_keys:
+            return []
+        if value:
+            return [value]
+    return []
 
 
 def _first_record(value: Any) -> Dict[str, Any]:
     for record in _first_list(value):
-        if isinstance(record, dict):
+        if isinstance(record, dict) and not _is_api_error(record):
             return record
-    if isinstance(value, dict):
-        return value
     return {}
 
 
@@ -107,12 +138,12 @@ def _int(value: Any) -> Optional[int]:
 
 def _safe_call(tool: str, arguments: Dict[str, Any]) -> Any:
     try:
-        result = mcp_client.call_tool(tool, arguments)
+        result = call_tool_once(mcp_client.call_tool, tool, arguments)
         if _is_api_error(result):
             return {"_error": "API错误"}
         return result
-    except Exception as exc:
-        return {"_error": str(exc)}
+    except Exception:
+        return {"_error": "调用失败"}
 
 
 def _safe_total(payload: Any) -> Any:
@@ -121,6 +152,11 @@ def _safe_total(payload: Any) -> Any:
             return None
         return payload.get("total")
     return None
+
+
+def _failed_tools(sources: Mapping[str, Any]) -> List[str]:
+    """Return only safe tool/dimension labels for failed calls."""
+    return [name for name, payload in sources.items() if _is_api_error(payload)]
 
 
 # --------------------------------------------------------------------------- #
@@ -134,6 +170,9 @@ def resolve_enterprise_name(raw: str) -> Dict[str, Any]:
     if any(suffix in raw for suffix in ("公司", "集团", "有限", "院", "厂", "中心", "事务所", "合作社", "合伙")):
         return {"keyword": raw, "enterprise": raw, "resolved": True, "reason": "视为企业全称"}
     fuzzy = _safe_call(T_FUZZY, {"matchKeyword": raw, "pageIndex": 1})
+    fuzzy_total = _int(_safe_total(fuzzy))
+    if fuzzy_total is not None and fuzzy_total > 1:
+        return {"keyword": raw, "enterprise": raw, "resolved": False, "reason": f"模糊查询返回多候选（{fuzzy_total}），未静默选择首条", "fuzzy_total": fuzzy_total}
     record = _first_record(fuzzy)
     name = str(record.get("name") or "").strip()
     if name:
@@ -200,25 +239,25 @@ def _derive_core_metrics(metrics: List[Dict[str, Any]], core: Mapping[str, Any])
     pav_dist = core.get("pavilion_dist", []) if isinstance(core, dict) else []
     year_trend = core.get("year_trend", []) if isinstance(core, dict) else []
     if isinstance(pav_dist, list) and pav_dist:
-        metrics.append({"label": "参展展馆数", "value": str(len(pav_dist)), "hint": "不同展馆数量"})
+        metrics.append({"label": "本次采集参展展馆数", "value": str(len(pav_dist)), "hint": "仅基于本次采集展示样本"})
         try:
             nums = [int(r.get("参展次数", 0)) for r in pav_dist if r.get("参展次数")]
             total = sum(nums)
             if total > 0:
                 top3 = sum(sorted(nums, reverse=True)[:3])
-                metrics.append({"label": "展馆CR3", "value": f"{top3/total*100:.1f}%", "hint": "前3大展馆参展集中度"})
+                metrics.append({"label": "本次采集展馆CR3", "value": f"{top3/total*100:.1f}%", "hint": "仅基于本次采集展示样本，不能代表全量"})
         except (ValueError, TypeError):
             pass
     if isinstance(year_trend, list) and year_trend:
-        metrics.append({"label": "活跃年份", "value": str(len(year_trend)), "hint": "有参展记录的年度数"})
+        metrics.append({"label": "本次采集活跃年份", "value": str(len(year_trend)), "hint": "仅基于本次采集展示样本"})
         try:
             years = sorted([str(r.get("年份", "")) for r in year_trend if r.get("年份")], reverse=True)
             if years:
-                metrics.append({"label": "最新参展年份", "value": years[0], "hint": "最近一次参展年份"})
-            nums = [(str(r.get("年份", "")), int(r.get("参展次数", 0))) for r in year_trend if r.get("参展次数")]
-            if nums:
-                peak = max(nums, key=lambda x: x[1])
-                metrics.append({"label": "参展峰值", "value": f"{peak[0]}年 {peak[1]}次", "hint": "参展最多的年份及次数"})
+                metrics.append({"label": "本次采集最新参展年份", "value": years[0], "hint": "仅基于本次采集展示样本"})
+            peak_rows = [(str(r.get("年份", "")), int(r.get("参展次数", 0))) for r in year_trend if r.get("参展次数")]
+            if peak_rows:
+                peak = max(peak_rows, key=lambda x: x[1])
+                metrics.append({"label": "本次采集参展峰值", "value": f"{peak[0]}年 {peak[1]}次", "hint": "仅基于本次采集展示样本"})
         except (ValueError, TypeError):
             pass
     return metrics
@@ -247,12 +286,33 @@ def build_caliber(subject: Mapping[str, Any], search_mode: bool) -> Dict[str, An
     else:
         match_target = subject.get("enterprise") or subject.get("match_raw")
         match_type = f"展会参与按企业主体匹配（keywordType={subject.get('keywordType', 'name')}）；支持企业名称/注册号/统一社会信用代码/企业 id"
+    scopes: Dict[str, Any] = {}
+    scope_value = subject.get("query_scopes")
+    if isinstance(scope_value, dict):
+        scopes = dict(scope_value)
+    unsupported = any("不支持地区过滤" in str(value) for value in scopes.values())
+    dimension_labels = {
+        "participation": "展会参与",
+        "venue": "展馆查询",
+        "exhibition": "展会查询",
+        "exhibitor": "展商查询",
+        "fair_exhibitors": "指定展会参展企业",
+    }
+    requested_products = [
+        label for key, label in dimension_labels.items()
+        if scopes.get(key) and scopes.get(key) != "未请求"
+    ]
+    limits = ["分页结果仅代表本次采集样本；上游总量不等于本次采集可见记录数。"]
+    if scopes.get("exhibition") and scopes.get("exhibition") != "未请求":
+        limits.append("关键词命中不保证每条记录都与主题直接相关，应结合报告中的逐条相关性标记复核。")
+    if unsupported:
+        limits.append("展会关键词查询工具不支持地区过滤，相关展会总量与本次采集均为全国关键词口径，不能外推为指定地区结果。")
     return {
         "match_target": match_target,
         "match_type": match_type,
-        "data_scope": "展会参与、展馆查询、展会查询、展商查询",
-        "products": ["展会参与", "展馆查询", "展会查询", "展商查询"],
-        "limit": "数据来自展会公开信息；少量字段可能存在更新延迟。",
+        "data_scope": "、".join(requested_products) or "未声明查询维度",
+        "products": requested_products,
+        "limit": "数据来自展会公开信息；少量字段可能存在更新延迟。" + " ".join(limits),
     }
 
 
@@ -278,17 +338,17 @@ def _fair_date_range(item: Mapping[str, Any]) -> str:
 
 
 def _fair_status(item: Mapping[str, Any]) -> str:
-    """isOpen: 1=开放/即将开展, 0=已结束或未开放."""
+    """Render isOpen as an upstream flag without inferring event timing."""
     v = item.get("isOpen")
     if v is None:
         return "-"
     try:
-        return "开放/即将开展" if int(v) == 1 else "已结束/未开放"
+        return f"上游开放标记={int(v)}"
     except (TypeError, ValueError):
-        return _text(v)
+        return f"上游开放标记={_text(v)}"
 
 
-def _participation_rows(payload: Any) -> List[Dict[str, Any]]:
+def _participation_rows(payload: Any, search_keyword: Optional[str] = None) -> List[Dict[str, Any]]:
     """participation/exhibition share fields: fairName/fairBeginTime/fairEndTime/
     fairPavilion/fairDesc/isOpen. We render date range, venue, status, and a
     highlight (fairDesc, truncated)."""
@@ -296,13 +356,26 @@ def _participation_rows(payload: Any) -> List[Dict[str, Any]]:
     for item in _first_list(payload):
         if not isinstance(item, dict):
             continue
-        rows.append({
+        row = {
+            "展会ID": _text(item.get("_id")) or "-",
             "展会名称": _text(item.get("fairName")) or "-",
             "展会日期": _fair_date_range(item),
             "展馆": _text(item.get("fairPavilion")) or "-",
             "状态": _fair_status(item),
             "展会亮点": _text(item.get("fairDesc"), limit=80) or "-",
-        })
+        }
+        if search_keyword:
+            keyword = "".join(search_keyword.casefold().split())
+            fair_name = "".join(_text(item.get("fairName")).casefold().split())
+            visible_desc = "" if row["展会亮点"] == "-" else str(row["展会亮点"])
+            fair_desc = "".join(visible_desc.casefold().split())
+            if keyword and keyword in fair_name:
+                row["关键词相关性"] = "名称命中"
+            elif keyword and keyword in fair_desc:
+                row["关键词相关性"] = "简介命中"
+            else:
+                row["关键词相关性"] = "待核：名称和可见简介未命中"
+        rows.append(row)
     return rows
 
 
@@ -311,9 +384,11 @@ def build_core_analysis(
     venue: Any,
     exhibition: Any,
     exhibitor: Any,
+    fair_exhibitors: Any = None,
+    search_keyword: Optional[str] = None,
 ) -> Dict[str, Any]:
     participation_rows = _participation_rows(participation)
-    exhibition_rows = _participation_rows(exhibition)
+    exhibition_rows = _participation_rows(exhibition, search_keyword)
     venue_rows = _table_from(
         venue,
         [
@@ -334,11 +409,19 @@ def build_core_analysis(
             ("boothNo", "展位号"),
         ],
     )
+    fair_exhibitor_rows = _table_from(
+        fair_exhibitors,
+        [
+            ("name", "企业名称"),
+            ("nameId", "企业ID"),
+        ],
+    )
 
     participation_total = _safe_total(participation)
     venue_total = _safe_total(venue)
     exhibition_total = _safe_total(exhibition)
     exhibitor_total = _safe_total(exhibitor)
+    fair_exhibitors_total = _safe_total(fair_exhibitors)
 
     # 派生：展馆分布（按 fairPavilion 聚合参展记录数）。
     pavilion_dist_rows = _aggregate_count(participation_rows, "展馆", name_key="展馆", count_key="参展次数")
@@ -347,17 +430,25 @@ def build_core_analysis(
 
     sections: List[Dict[str, Any]] = []
     if participation_rows or participation_total is not None:
-        sections.append({"key": "participation", "title": "展会参与", "kind": "table", "note": f"企业展会参与记录 {participation_total if participation_total is not None else '若干'} 条", "columns": [("展会名称", "展会名称"), ("展会日期", "展会日期"), ("展馆", "展馆"), ("状态", "状态"), ("展会亮点", "展会亮点")]})
+        sections.append({"key": "participation", "title": "展会参与", "kind": "table", "note": (f"上游总量 {participation_total} 条；本次采集展示 {len(participation_rows)} 条" if participation_total is not None else f"本次采集展示 {len(participation_rows)} 条；上游未返回总量"), "columns": [("展会名称", "展会名称"), ("展会日期", "展会日期"), ("展馆", "展馆"), ("状态", "状态"), ("展会亮点", "展会亮点")]})
     if pavilion_dist_rows:
-        sections.append({"key": "pavilion_dist", "title": "参展展馆分布", "kind": "bar", "note": "按展馆聚合参展记录数", "chart": {"name": "展馆", "value": "参展次数", "orient": "h"}, "columns": [("展馆", "展馆"), ("参展次数", "参展次数")]})
+        sections.append({"key": "pavilion_dist", "title": "参展展馆分布", "kind": "bar", "note": "仅按本次采集展示样本聚合，不代表上游全量分布", "chart": {"name": "展馆", "value": "参展次数", "orient": "h"}, "columns": [("展馆", "展馆"), ("参展次数", "参展次数")]})
     if year_trend_rows:
-        sections.append({"key": "year_trend", "title": "参展年度趋势", "kind": "line", "note": "按年度统计参展次数", "chart": {"x": "年份", "y": "参展次数", "area": True}, "columns": [("年份", "年份"), ("参展次数", "参展次数")]})
+        sections.append({"key": "year_trend", "title": "参展年度趋势", "kind": "line", "note": "仅按本次采集展示样本统计，不代表全量年度趋势", "chart": {"x": "年份", "y": "参展次数", "area": True}, "columns": [("年份", "年份"), ("参展次数", "参展次数")]})
     if venue_rows or venue_total is not None:
-        sections.append({"key": "venue", "title": "展馆查询", "kind": "table", "note": f"展馆记录 {venue_total if venue_total is not None else '若干'} 条", "columns": [("展馆名称", "展馆名称"), ("所在区域", "所在区域"), ("地址", "地址"), ("展馆面积", "展馆面积"), ("展厅数量", "展厅数量")]})
+        sections.append({"key": "venue", "title": "展馆查询", "kind": "table", "note": (f"上游总量 {venue_total} 条；本次采集展示 {len(venue_rows)} 条" if venue_total is not None else f"本次采集展示 {len(venue_rows)} 条；上游未返回总量"), "columns": [("展馆名称", "展馆名称"), ("所在区域", "所在区域"), ("地址", "地址"), ("展馆面积", "展馆面积"), ("展厅数量", "展厅数量")]})
     if exhibition_rows or exhibition_total is not None:
-        sections.append({"key": "exhibition", "title": "展会查询", "kind": "table", "note": f"展会记录 {exhibition_total if exhibition_total is not None else '若干'} 条", "columns": [("展会名称", "展会名称"), ("展会日期", "展会日期"), ("展馆", "展馆"), ("状态", "状态"), ("展会亮点", "展会亮点")]})
+        exhibition_note = (f"上游总量 {exhibition_total} 条；本次采集展示 {len(exhibition_rows)} 条" if exhibition_total is not None else f"本次采集展示 {len(exhibition_rows)} 条；上游未返回总量")
+        exhibition_columns = [("展会ID", "展会ID"), ("展会名称", "展会名称"), ("展会日期", "展会日期"), ("展馆", "展馆"), ("状态", "状态"), ("展会亮点", "展会亮点")]
+        if search_keyword:
+            related = sum(1 for row in exhibition_rows if row.get("关键词相关性") in {"名称命中", "简介命中"})
+            exhibition_note += f"；可见字段直接命中关键词 {related} 条，其他记录保留并标为待核"
+            exhibition_columns.append(("关键词相关性", "关键词相关性"))
+        sections.append({"key": "exhibition", "title": "展会查询", "kind": "table", "note": exhibition_note, "columns": exhibition_columns})
     if exhibitor_rows or exhibitor_total is not None:
-        sections.append({"key": "exhibitor", "title": "展商查询", "kind": "table", "note": f"展商记录 {exhibitor_total if exhibitor_total is not None else '若干'} 条", "columns": [("展商名称", "展商名称"), ("参展展会", "参展展会"), ("所属行业", "所属行业"), ("展会区域", "展会区域"), ("展位号", "展位号")]})
+        sections.append({"key": "exhibitor", "title": "展商查询", "kind": "table", "note": (f"上游总量 {exhibitor_total} 条；本次采集展示 {len(exhibitor_rows)} 条" if exhibitor_total is not None else f"本次采集展示 {len(exhibitor_rows)} 条；上游未返回总量"), "columns": [("展商名称", "展商名称"), ("参展展会", "参展展会"), ("所属行业", "所属行业"), ("展会区域", "展会区域"), ("展位号", "展位号")]})
+    if fair_exhibitor_rows or fair_exhibitors_total is not None:
+        sections.append({"key": "fair_exhibitors", "title": "指定展会参展企业", "kind": "table", "note": (f"上游总量 {fair_exhibitors_total} 家；本次采集展示 {len(fair_exhibitor_rows)} 家" if fair_exhibitors_total is not None else f"本次采集展示 {len(fair_exhibitor_rows)} 家；上游未返回总量"), "columns": [("企业名称", "企业名称"), ("企业ID", "企业ID")]})
 
     return {
         "sections": sections,
@@ -367,10 +458,11 @@ def build_core_analysis(
         "venue": venue_rows,
         "exhibition": exhibition_rows,
         "exhibitor": exhibitor_rows,
+        "fair_exhibitors": fair_exhibitor_rows,
     }
 
 
-def _aggregate_count(rows: List[Mapping[str, Any]], key: str, top_n: int = 0, name_key: str = "名称", count_key: str = "数量") -> List[Dict[str, Any]]:
+def _aggregate_count(rows: Sequence[Mapping[str, Any]], key: str, top_n: int = 0, name_key: str = "名称", count_key: str = "数量") -> List[Dict[str, Any]]:
     """Aggregate rows by a field, returning [{name_key: value, count_key: n}] sorted desc."""
     counts: Dict[str, int] = {}
     for r in rows:
@@ -384,7 +476,7 @@ def _aggregate_count(rows: List[Mapping[str, Any]], key: str, top_n: int = 0, na
     return [{name_key: k, count_key: str(n)} for k, n in items]
 
 
-def _year_trend_from(rows: List[Mapping[str, Any]], date_key: str) -> List[Dict[str, Any]]:
+def _year_trend_from(rows: Sequence[Mapping[str, Any]], date_key: str) -> List[Dict[str, Any]]:
     """Extract 4-digit year from a date string and aggregate counts by year, sorted."""
     import re as _re
     counts: Dict[str, int] = {}
@@ -408,6 +500,12 @@ def build_records(core: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "展馆": item.get("展馆") or "-",
                 "状态": item.get("状态") or "-",
             })
+    if not rows and core.get("fair_exhibitors"):
+        for item in core.get("fair_exhibitors") or []:
+            rows.append({
+                "企业名称": item.get("企业名称") or "-",
+                "企业ID": item.get("企业ID") or "-",
+            })
     if not rows and core.get("exhibition"):
         for item in core.get("exhibition") or []:
             rows.append({
@@ -426,7 +524,7 @@ def build_records(core: Mapping[str, Any]) -> List[Dict[str, Any]]:
     return rows[:20]
 
 
-def _concentration_rows(rows: List[Mapping[str, Any]], name_key: str, value_key: str, top_n: int = 3) -> Dict[str, Any]:
+def _concentration_rows(rows: Sequence[Mapping[str, Any]], name_key: str, value_key: str, top_n: int = 3) -> Dict[str, Any]:
     """CRn concentration from aggregated rows."""
     items = []
     for r in rows:
@@ -467,7 +565,7 @@ def _year_trend_analysis(rows: List[Mapping[str, Any]]) -> Dict[str, Any]:
     return {"peak_period": rows[peak_idx].get("年份", "-"), "peak_value": nums[peak_idx], "direction": direction, "yoy": yoy, "last": nums[-1]}
 
 
-def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: List[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
     insights: List[Dict[str, Any]] = []
     metric_map = {m["label"]: str(m["value"]) for m in metrics}
 
@@ -475,23 +573,33 @@ def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics:
         venue_total = metric_map.get("展馆")
         exhibition_total = metric_map.get("展会")
         exhibitor_total = metric_map.get("展商")
+        fair_exhibitors_total = metric_map.get("指定展会参展企业")
         if exhibition_total:
             insights.append({
-                "feature": "市场展会规模",
-                "evidence": f"检索命中展会 {exhibition_total} 场。",
-                "interpretation": "展会数量反映目标区域/行业的市场活跃度，是评估线下营销机会的重要参考。",
+                "feature": "展会查询返回",
+                "evidence": f"上游报告展会查询总量 {exhibition_total} 条。",
+                "interpretation": "该数值是上游关键词查询总量；不代表每条记录均与主题直接相关，也不据此推断区域或行业活跃度。",
             })
         if exhibitor_total:
             insights.append({
-                "feature": "展商密度",
-                "evidence": f"检索命中展商 {exhibitor_total} 家。",
-                "interpretation": "展商数量反映行业竞争与生态规模；可结合行业分布定位潜在合作伙伴或竞品。",
+                "feature": "展商查询返回",
+                "evidence": f"上游报告展商查询总量 {exhibitor_total} 家。",
+                "interpretation": "该数值仅说明筛选条件下的上游返回规模，不等同于行业竞争强度、生态规模或完整企业清单。",
             })
         if venue_total:
             insights.append({
-                "feature": "展馆资源",
-                "evidence": f"检索命中展馆 {venue_total} 家。",
-                "interpretation": "展馆资源反映目标区域的办展基础设施承载力。",
+                "feature": "展馆查询返回",
+                "evidence": f"上游报告展馆查询总量 {venue_total} 家。",
+                "interpretation": "该数值仅说明查询返回规模；展馆状态、容量及可用性需逐条核验。",
+            })
+        if fair_exhibitors_total:
+            selected_value = subject.get("selected_fair")
+            selected: Mapping[str, Any] = selected_value if isinstance(selected_value, dict) else {}
+            fair_name = selected.get("name") or subject.get("match_raw") or "所选展会"
+            insights.append({
+                "feature": "指定展会参展企业名录",
+                "evidence": f"“{fair_name}”检索所得届次命中参展企业 {fair_exhibitors_total} 家。",
+                "interpretation": "该名录仅对应报告所列展会ID和届次，可用于参展企业核对；不外推为其他届次或全量行业企业。",
             })
         # 行业分布集中度（基于 exhibition/exhibitor 聚合）
         exh_rows = core.get("exhibition") or []
@@ -508,9 +616,9 @@ def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics:
         participation = core.get("participation") or []
         if participation_total:
             insights.append({
-                "feature": "参展活跃度",
+                "feature": "参展记录收录",
                 "evidence": f"企业展会参与记录 {participation_total} 条。",
-                "interpretation": "参展频度反映企业线下营销投入与行业曝光度；持续参展通常意味着稳定的渠道与品牌建设。",
+                "interpretation": "该数值仅为上游收录记录总量；参展时间、身份及活动成效需逐条核验。",
             })
         # 展馆集中度（基于聚合后的 pavilion_dist）。
         pavilion_dist = core.get("pavilion_dist") or []
@@ -520,8 +628,8 @@ def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics:
                 focus = "聚焦" if conc["top_share"] >= 60 else ("多元" if conc["top_share"] < 40 else "较聚焦")
                 insights.append({
                     "feature": "参展展馆集中度",
-                    "evidence": f"“{conc['top']}”参展占比约 {conc['top_share']:.0f}%，前 3 展馆合计 {conc['cr']:.0f}%（CR3）。",
-                    "interpretation": f"展馆布局{focus}；高集中度反映核心展会阵地清晰，多元分布说明跨场馆/跨城市拓展。",
+                    "evidence": f"本次采集样本中，“{conc['top']}”参展占比约 {conc['top_share']:.0f}%，前 3 展馆合计 {conc['cr']:.0f}%（CR3）。",
+                    "interpretation": f"本次采集样本的展馆布局{focus}；该比例不代表上游全量分布，不据此外推企业整体展馆策略。",
                 })
         # 年度趋势
         year_trend = core.get("year_trend") or []
@@ -530,8 +638,8 @@ def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics:
             if ta:
                 insights.append({
                     "feature": "参展年度趋势",
-                    "evidence": f"峰值出现在“{ta['peak_period']}”（{ta['peak_value']:.0f} 次），近年{ta['direction']}，{ta.get('yoy', '')}。",
-                    "interpretation": "参展频次上升反映线下营销加码或新业务推广；下降可能是预算收缩或转向线上。",
+                    "evidence": f"本次采集样本峰值出现在“{ta['peak_period']}”（{ta['peak_value']:.0f} 次），样本内{ta['direction']}，{ta.get('yoy', '')}。",
+                    "interpretation": "本次采集样本不足以证明企业全量参展趋势，不据此推断营销预算变化。",
                 })
         # 开展状态分布
         if participation:
@@ -543,9 +651,9 @@ def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics:
             if status_counts:
                 top_status = sorted(status_counts.items(), key=lambda kv: kv[1], reverse=True)[0]
                 insights.append({
-                    "feature": "开展状态",
+                    "feature": "上游开放标记",
                     "evidence": f"主要状态为“{top_status[0]}”（{top_status[1]} / {len(participation)}）。",
-                    "interpretation": "开放/即将开展的展会占比高说明企业近期线下营销活跃；已结束为主则反映历史参展记录较多。",
+                    "interpretation": "该字段仅原样呈现上游开放标记，不用于推断当前时间状态；应以实际起止日期另行核验。",
                 })
     if not insights:
         insights.append({
@@ -567,39 +675,48 @@ def _agg_local(rows: List[Mapping[str, Any]], key: str) -> List[Dict[str, Any]]:
     return [{"名称": k, "数量": str(n)} for k, n in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)]
 
 
-def build_metrics(participation: Any, venue: Any, exhibition: Any, exhibitor: Any) -> List[Dict[str, Any]]:
+def build_metrics(participation: Any, venue: Any, exhibition: Any, exhibitor: Any, fair_exhibitors: Any = None) -> List[Dict[str, Any]]:
     metrics: List[Dict[str, Any]] = []
 
-    def _ttotal(payload: Any, present: bool) -> str:
+    def _ttotal(payload: Any, present: bool) -> Optional[str]:
         if not present:
-            return "-"
+            return None
         if isinstance(payload, dict) and payload.get("total") is not None:
             return _text(payload.get("total"))
-        return "若干"
+        rows = _first_list(payload)
+        return str(len(rows)) if rows else None
 
     has_part = isinstance(participation, dict) and "_error" not in participation
     has_venue = isinstance(venue, dict) and "_error" not in venue
     has_exh = isinstance(exhibition, dict) and "_error" not in exhibition
     has_exhibitor = isinstance(exhibitor, dict) and "_error" not in exhibitor
+    has_fair_exhibitors = isinstance(fair_exhibitors, dict) and "_error" not in fair_exhibitors
 
     metrics.append({"label": "展会参与", "value": _ttotal(participation, has_part), "hint": "企业展会参与条数"})
     metrics.append({"label": "展馆", "value": _ttotal(venue, has_venue), "hint": "展馆查询命中数"})
     metrics.append({"label": "展会", "value": _ttotal(exhibition, has_exh), "hint": "展会查询命中数"})
     metrics.append({"label": "展商", "value": _ttotal(exhibitor, has_exhibitor), "hint": "展商查询命中数"})
+    metrics.append({"label": "指定展会参展企业", "value": _ttotal(fair_exhibitors, has_fair_exhibitors), "hint": "按搜索所得展会ID查询的参展企业数"})
     return [m for m in metrics if m.get("value") not in ("", None, "-")]
 
 
-def build_abstract(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: List[Mapping[str, Any]]) -> str:
+def build_abstract(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: Sequence[Mapping[str, Any]]) -> str:
+    scopes: Dict[str, Any] = {}
+    scope_value = subject.get("query_scopes")
+    if isinstance(scope_value, dict):
+        scopes = dict(scope_value)
+    requested = [name for key, name in (("participation", "企业展会参与"), ("venue", "展馆查询"), ("exhibition", "展会查询"), ("exhibitor", "展商查询"), ("fair_exhibitors", "指定展会参展企业")) if scopes.get(key) and scopes.get(key) != "未请求"]
+    requested_text = "、".join(requested) or "已请求维度"
     if subject.get("search_mode"):
         name = subject.get("match_raw") or "目标市场"
-        parts = [f"本报告以“{name}”为检索范围，基于展会公开数据，系统呈现展馆、展会、展商的市场检索结果。"]
+        parts = [f"本报告以“{name}”为检索关键词，基于展会公开数据呈现{requested_text}；各维度严格采用其工具支持的筛选口径。"]
     else:
         name = subject.get("enterprise") or subject.get("match_raw") or "目标企业"
-        parts = [f"本报告以“{name}”为分析对象，基于展会公开数据，系统呈现企业展会参与记录及目标市场展馆、展会、展商检索结果。"]
+        parts = [f"本报告以“{name}”为分析对象，基于展会公开数据呈现{requested_text}。"]
     if metrics:
         kv = "、".join(f"{m['label']} {m['value']}" for m in metrics[:5])
         parts.append(f"关键指标包括：{kv}。")
-    parts.append("报告围绕展会参与度与市场检索规模给出结构化解读，便于线下营销、行业研究与展会选型决策参考。")
+    parts.append("报告呈现已请求维度的查询记录与本次采集结构化汇总，供后续逐条核验。")
     return "".join(parts)
 
 
@@ -624,7 +741,7 @@ def build_dry_run_payload(raw: str, keyword_type: str) -> Dict[str, Any]:
 # Assembly
 # --------------------------------------------------------------------------- #
 
-def _assemble(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: List[Mapping[str, Any]], *, dry_run: bool, search_mode: bool = False) -> Dict[str, Any]:
+def _assemble(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: Sequence[Mapping[str, Any]], *, dry_run: bool, search_mode: bool = False, tool_errors: Optional[List[str]] = None) -> Dict[str, Any]:
     abstract = build_abstract(subject, core, metrics)
     records = build_records(core)
     insights = build_insights(subject, core, metrics)
@@ -643,11 +760,30 @@ def _assemble(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: List
         "empty_sections": total_secs - populated,
         "coverage_pct": round(populated / max(1, total_secs) * 100),
     }
-    if populated == 0:
+    if subject.get("blocked_reason"):
+        abstract = f"查询受阻：{subject.get('blocked_reason')}。已保留成功取得的检索结果，但未完成受阻维度，不据此生成该维度业务结论。"
+    elif populated == 0:
+        if tool_errors:
+            abstract = "本次查询未获得有效核心数据，且存在上游调用失败维度：" + "、".join(tool_errors) + "。不据此生成业务规模或市场结论。"
+        else:
+            abstract = "本次查询未返回有效核心数据；报告仅记录查询边界，不生成业务规模或市场结论。"
         import sys
         print("⚠️ 质量门禁警告: 所有核心分析维度均无数据", file=sys.stderr)
-    mode_label = "市场检索" if search_mode else "企业参展"
+    mode_label = {"fair_search": "展会检索", "fair_exhibitors": "指定展会参展企业"}.get(str(subject.get("mode")), "市场检索" if search_mode else "企业参展")
     title = f"{subject.get('enterprise') or subject.get('match_raw') or '目标'} 展会大数据报告（{mode_label}）"
+    product_catalog = {
+        "participation": {"name": "展会参与", "product_id": "66a26918ff3066996ecc6471"},
+        "venue": {"name": "展馆查询", "product_id": "66e2d2ca428a1f4cd69c1083"},
+        "exhibition": {"name": "展会查询", "product_id": "66a0f6ca477cbe5f7605973f"},
+        "exhibitor": {"name": "展商查询", "product_id": "66d5b7e0537c3f61d646c473"},
+        "fair_exhibitors": {"name": "指定展会参展企业", "product_id": "66a2684651cde0f1e3aeff5a"},
+    }
+    scope_value = subject.get("query_scopes")
+    scopes = scope_value if isinstance(scope_value, dict) else {}
+    requested_products = [
+        product for key, product in product_catalog.items()
+        if scopes.get(key) and scopes.get(key) != "未请求"
+    ]
     return {
         "report_type": REPORT_TYPE,
         "title": title,
@@ -655,7 +791,7 @@ def _assemble(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: List
         "subject": dict(subject),
         "abstract": abstract,
         "summary": abstract,
-        "executive_summary": [item["interpretation"] for item in insights][:5] or [abstract[:120]],
+        "executive_summary": ((["主体解析受阻：" + str(subject.get("blocked_reason")) + "；已停止主体数据调用。"] if subject.get("blocked_reason") else (["数据缺口：" + "、".join(tool_errors or []) + "未成功返回，本报告仅呈现成功维度。"] if tool_errors else [])) + ([item["interpretation"] for item in insights][:5] or [abstract[:120]])),
         "metrics": list(metrics),
         "caliber": build_caliber(subject, search_mode),
         "core_analysis": dict(core),
@@ -663,20 +799,18 @@ def _assemble(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: List
         "insights": insights,
         "data_source": {
             "mcp_server": "exhibition-mcp-server",
-            "products": [
-                {"name": "展会参与", "product_id": "66a26918ff3066996ecc6471"},
-                {"name": "展馆查询", "product_id": "66e2d2ca428a1f4cd69c1083"},
-                {"name": "展会查询", "product_id": "66a0f6ca477cbe5f7605973f"},
-                {"name": "展商查询", "product_id": "66d5b7e0537c3f61d646c473"},
-            ],
+            "products": requested_products,
             "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
             "dry_run": dry_run,
+            "tool_errors": list(tool_errors or []),
+            "blocked_reason": subject.get("blocked_reason"),
             "quality_report": quality_report,
-            "mode": "market_search" if search_mode else "enterprise",
+            "mode": subject.get("mode") or ("market_search" if search_mode else "enterprise"),
         },
     }
 
 
+@paid_call_scope
 def build_payload(
     raw: str,
     keyword_type: str,
@@ -685,36 +819,191 @@ def build_payload(
     fair_industries: Optional[str],
     search_keyword: Optional[str],
     page_size: int,
+    *,
+    search_target: str = "all",
+    fair_exhibitors: Optional[str] = None,
+    fair_result_index: Optional[int] = None,
+    max_pages: int = 1,
 ) -> Dict[str, Any]:
+    if isinstance(max_pages, bool) or not isinstance(max_pages, int) or max_pages < 1:
+        raise ValueError("max_pages 必须为正整数")
+    if fair_exhibitors:
+        return _build_fair_exhibitors_payload(fair_exhibitors, page_size, fair_result_index, max_pages)
+    if search_target == "exhibition":
+        return _build_fair_search_payload(search_keyword or "", page_size, max_pages)
+
     search_mode = bool(venue_region or fair_region or fair_industries or search_keyword)
     resolved = resolve_enterprise_name(raw) if raw else {"enterprise": "", "resolved": False, "reason": "未指定企业（市场检索模式）"}
     enterprise = resolved.get("enterprise") or raw
+    if raw and not resolved.get("resolved") and not search_mode:
+        subject = build_subject(raw, resolved, keyword_type, False)
+        subject["blocked_reason"] = resolved.get("reason") or "企业主体未唯一解析"
+        return _assemble(subject, build_core_analysis(None, None, None, None), [], dry_run=False)
 
-    participation: Any = {"_error": "未指定企业，跳过展会参与查询"} if not raw else _safe_call(
-        T_PARTICIPATION,
-        {"matchKeyword": enterprise, "keywordType": keyword_type, "pageIndex": 1, "pageSize": page_size},
+    participation: Any = None if not raw or not resolved.get("resolved") else collect_detail_pages(
+        _safe_call, T_PARTICIPATION,
+        {"matchKeyword": enterprise, "keywordType": keyword_type, "pageSize": page_size},
+        get_rows=_first_list, get_total=_safe_total, is_error=_is_api_error,
+        max_pages=max_pages,
     )
 
-    venue: Any = {"_error": "未指定展馆区域，跳过展馆查询"} if not venue_region else _safe_call(T_VENUE, {"pavilionRegion": venue_region, "matchKeyword": search_keyword or None, "pageIndex": 1})
+    venue: Any = None if not venue_region else collect_detail_pages(
+        _safe_call, T_VENUE,
+        {"pavilionRegion": venue_region, "matchKeyword": search_keyword or None, "pageSize": page_size},
+        get_rows=_first_list, get_total=_safe_total, is_error=_is_api_error,
+        max_pages=max_pages,
+    )
 
-    exhibition: Any = {"_error": "未指定检索条件，跳过展会查询"} if not search_keyword else _safe_call(T_EXHIBITION, {"matchKeyword": search_keyword, "pageIndex": 1})
+    exhibition: Any = None if not search_keyword else collect_detail_pages(
+        _safe_call, T_EXHIBITION,
+        {"matchKeyword": search_keyword, "pageSize": page_size},
+        get_rows=_first_list, get_total=_safe_total, is_error=_is_api_error,
+        max_pages=max_pages,
+    )
 
-    exhibitor_args: Dict[str, Any] = {"pageIndex": 1, "pageSize": page_size}
+    exhibitor_args: Dict[str, Any] = {"pageSize": page_size}
     if fair_region:
         exhibitor_args["fairRegion"] = fair_region
     if fair_industries:
         exhibitor_args["fairIndustries"] = fair_industries
     if search_keyword:
         exhibitor_args["matchKeyword"] = search_keyword
-    exhibitor: Any = {"_error": "未指定展商检索条件，跳过展商查询"} if not (fair_region or fair_industries or search_keyword) else _safe_call(T_EXHIBITOR, exhibitor_args)
+    exhibitor: Any = None if not (fair_region or fair_industries or search_keyword) else collect_detail_pages(
+        _safe_call, T_EXHIBITOR, exhibitor_args,
+        get_rows=_first_list, get_total=_safe_total, is_error=_is_api_error,
+        max_pages=max_pages,
+    )
 
     subject = build_subject(raw or (search_keyword or fair_region or venue_region or "市场检索"), resolved, keyword_type, search_mode)
-    core = build_core_analysis(participation, venue, exhibition, exhibitor)
+    subject["filters"] = {"venue_region": venue_region, "fair_region": fair_region, "fair_industries": fair_industries, "search_keyword": search_keyword}
+    subject["query_scopes"] = {
+        "participation": "企业主体口径" if raw else "未请求",
+        "venue": "展馆区域筛选口径" if venue_region else "未请求",
+        "exhibition": ("全国关键词口径（工具不支持地区过滤）" if search_keyword and fair_region else ("全国关键词口径" if search_keyword else "未请求")),
+        "exhibitor": "展商地区/行业筛选口径" if (fair_region or fair_industries) else ("关键词口径" if search_keyword else "未请求"),
+    }
+    core = build_core_analysis(participation, venue, exhibition, exhibitor, search_keyword=search_keyword)
     metrics = build_metrics(participation, venue, exhibition, exhibitor)
     # --- Enterprise profile enrichment (from fuzzy_search) ---
     _enrich_metrics_with_profile(metrics, resolved.get("record") if isinstance(resolved, dict) else None)
     _derive_core_metrics(metrics, core if isinstance(core, dict) else {})
-    return _assemble(subject, core, metrics, dry_run=False, search_mode=search_mode)
+    return attach_pagination(
+        _assemble(subject, core, metrics, dry_run=False, search_mode=search_mode, tool_errors=_failed_tools({"展会参与": participation, "展馆查询": venue, "展会查询": exhibition, "展商查询": exhibitor})),
+        {"展会参与明细": participation, "展馆查询": venue, "展会查询": exhibition, "展商查询": exhibitor},
+    )
+
+
+def _fair_search_subject(keyword: str, mode: str) -> Dict[str, Any]:
+    return {
+        "enterprise": "",
+        "matchKeyword": keyword,
+        "keywordType": "fairName",
+        "match_raw": keyword,
+        "resolved": False,
+        "resolve_reason": "展会关键词无需解析企业主体",
+        "search_mode": True,
+        "mode": mode,
+        "filters": {"search_keyword": keyword},
+        "query_scopes": {
+            "participation": "未请求",
+            "venue": "未请求",
+            "exhibition": "全国关键词口径",
+            "exhibitor": "未请求",
+            "fair_exhibitors": "搜索所得展会ID口径" if mode == "fair_exhibitors" else "未请求",
+        },
+    }
+
+
+@paid_call_scope
+def _build_fair_search_payload(keyword: str, page_size: int, max_pages: int = 1) -> Dict[str, Any]:
+    subject = _fair_search_subject(keyword, "fair_search")
+    if not keyword.strip():
+        subject["blocked_reason"] = "展会检索关键词为空"
+        return _assemble(subject, build_core_analysis(None, None, None, None), [], dry_run=False, search_mode=True)
+    exhibition = collect_detail_pages(
+        _safe_call, T_EXHIBITION,
+        {"matchKeyword": keyword, "pageSize": page_size},
+        get_rows=_first_list, get_total=_safe_total, is_error=_is_api_error,
+        max_pages=max_pages,
+    )
+    core = build_core_analysis(None, None, exhibition, None, search_keyword=keyword)
+    metrics = build_metrics(None, None, exhibition, None)
+    return attach_pagination(
+        _assemble(
+            subject,
+            core,
+            metrics,
+            dry_run=False,
+            search_mode=True,
+            tool_errors=_failed_tools({"展会查询": exhibition}),
+        ),
+        {"展会查询": exhibition},
+    )
+
+
+@paid_call_scope
+def _build_fair_exhibitors_payload(keyword: str, page_size: int, fair_result_index: Optional[int], max_pages: int = 1) -> Dict[str, Any]:
+    subject = _fair_search_subject(keyword, "fair_exhibitors")
+    # 第一跳：展会检索仅用于确定 fairId 候选（选择边界），固定 1 页预算，不因选择而扩大付费调用。
+    exhibition = collect_detail_pages(
+        _safe_call, T_EXHIBITION,
+        {"matchKeyword": keyword, "pageSize": page_size},
+        get_rows=_first_list, get_total=_safe_total, is_error=_is_api_error,
+        max_pages=1,
+    )
+    fair_rows = [row for row in _first_list(exhibition) if isinstance(row, dict)]
+    selected: Optional[Dict[str, Any]] = None
+    blocked_reason = ""
+    if _is_api_error(exhibition):
+        blocked_reason = "展会搜索调用失败，未执行参展企业查询"
+    elif not fair_rows:
+        blocked_reason = "展会搜索未返回可选择的展会，未执行参展企业查询"
+    elif fair_result_index is None and len(fair_rows) > 1:
+        blocked_reason = f"展会搜索返回 {len(fair_rows)} 条当前页结果；请使用 --fair-result-index 明确选择届次"
+    else:
+        index = (fair_result_index or 1) - 1
+        if index < 0 or index >= len(fair_rows):
+            blocked_reason = f"--fair-result-index {fair_result_index} 超出当前页 {len(fair_rows)} 条结果范围"
+        else:
+            selected = fair_rows[index]
+
+    fair_id = _text(selected.get("_id")) if selected else ""
+    if selected and not fair_id:
+        blocked_reason = "所选展会未返回可用展会ID，未执行参展企业查询"
+        selected = None
+
+    fair_exhibitor_payload: Any = None
+    if selected:
+        subject["selected_fair"] = {
+            "id": fair_id,
+            "name": _text(selected.get("fairName")) or "-",
+            "date": _fair_date_range(selected),
+            "pavilion": _text(selected.get("fairPavilion")) or "-",
+            "result_index": (fair_result_index or 1),
+        }
+        fair_exhibitor_payload = collect_detail_pages(
+            _safe_call, T_FAIR_EXHIBITORS,
+            {"matchKeyword": fair_id, "pageSize": page_size},
+            get_rows=_first_list, get_total=_safe_total, is_error=_is_api_error,
+            max_pages=max_pages,
+        )
+    else:
+        subject["blocked_reason"] = blocked_reason
+
+    core = build_core_analysis(None, None, exhibition, None, fair_exhibitor_payload, search_keyword=keyword)
+    metrics = build_metrics(None, None, exhibition, None, fair_exhibitor_payload)
+    tool_errors = _failed_tools({"展会查询": exhibition, "指定展会参展企业": fair_exhibitor_payload})
+    return attach_pagination(
+        _assemble(
+            subject,
+            core,
+            metrics,
+            dry_run=False,
+            search_mode=True,
+            tool_errors=tool_errors,
+        ),
+        {"展会筛选候选": exhibition, "参展企业": fair_exhibitor_payload},
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -729,20 +1018,50 @@ def main() -> None:
     parser.add_argument("--fair-region", help="展会区域（市场检索模式：展商查询过滤）")
     parser.add_argument("--fair-industries", help="展会行业（市场检索模式：展商查询过滤）")
     parser.add_argument("--search", dest="search_keyword", help="展会 / 展商 / 展馆关键词（市场检索模式）")
+    parser.add_argument("--search-target", choices=["all", "exhibition"], default="all", help="检索目标；exhibition 仅查询展会，不连带查询展商")
+    parser.add_argument("--fair-exhibitors", help="指定展会参展企业模式：输入展会名称/关键词，内部先检索展会再以真实展会ID查询参展企业")
+    parser.add_argument("--fair-result-index", type=int, help="指定展会参展企业模式：选择当前页第几条展会检索结果（从1开始；多条结果时必填）")
     parser.add_argument("--page-size", type=int, default=10, help="分页大小（最多 50）")
+    parser.add_argument("--max-pages", type=int, default=1, help="规划的明细付费调用页数上限，默认1；先按 total 估算，只有必要且已授权时提高")
     parser.add_argument("--dry-run", action="store_true", help="不调用真实 MCP，使用样例数据组装报告骨架")
     parser.add_argument("--output", help="输出 JSON 路径；省略则打印到 stdout")
     parser.add_argument("--report-output", help="同时输出 HTML 报告（.html）与 Markdown 报告（.md）")
     parser.add_argument("--pdf-output", help="额外输出 PDF 报告（.pdf）；需要 Playwright + Chromium")
     args = parser.parse_args()
 
-    if not args.enterprise and not args.dry_run and not (args.venue_region or args.fair_region or args.fair_industries or args.search_keyword):
-        parser.error("至少需要 --enterprise（企业参展模式）或 --venue-region / --fair-region / --fair-industries / --search 之一（市场检索模式）；或使用 --dry-run。")
+    if not 1 <= args.page_size <= 50:
+        parser.error("--page-size 必须在 1 到 50 之间。")
+    if args.max_pages is not None and args.max_pages < 1:
+        parser.error("--max-pages 必须为正整数。")
+    if not args.enterprise and not args.dry_run and not (args.venue_region or args.fair_region or args.fair_industries or args.search_keyword or args.fair_exhibitors):
+        parser.error("至少需要 --enterprise（企业参展模式）、--venue-region / --fair-region / --fair-industries / --search 之一（市场检索模式）或 --fair-exhibitors；或使用 --dry-run。")
+    if args.search_target == "exhibition":
+        if not args.search_keyword:
+            parser.error("--search-target exhibition 必须与 --search 一起使用。")
+        if args.enterprise or args.venue_region or args.fair_region or args.fair_industries or args.fair_exhibitors:
+            parser.error("展会单项检索不可与企业、展馆、展商过滤或 --fair-exhibitors 混用。")
+    if args.fair_exhibitors:
+        if args.enterprise or args.venue_region or args.fair_region or args.fair_industries or args.search_keyword:
+            parser.error("--fair-exhibitors 是独立两跳模式，不可与企业、展馆、展商过滤或 --search 混用。")
+    elif args.fair_result_index is not None:
+        parser.error("--fair-result-index 只能与 --fair-exhibitors 一起使用。")
 
     if args.dry_run:
         payload = build_dry_run_payload(args.enterprise or "示例科技有限公司", args.keyword_type)
     else:
-        payload = build_payload(args.enterprise or "", args.keyword_type, args.venue_region, args.fair_region, args.fair_industries, args.search_keyword, args.page_size)
+        payload = build_payload(
+            args.enterprise or "",
+            args.keyword_type,
+            args.venue_region,
+            args.fair_region,
+            args.fair_industries,
+            args.search_keyword,
+            args.page_size,
+            search_target=args.search_target,
+            fair_exhibitors=args.fair_exhibitors,
+            fair_result_index=args.fair_result_index,
+            max_pages=args.max_pages,
+        )
 
     if args.output:
         out = pathlib.Path(args.output).expanduser()

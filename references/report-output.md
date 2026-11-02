@@ -14,15 +14,20 @@
 
 1. **报告摘要**：分析对象 / 检索范围、数据覆盖范围、核心发现、关键指标卡。
 2. **查询对象与口径**：企业全称（企业参展模式）或检索条件（市场检索模式）、匹配方式、数据范围、产品、局限。
-3. **数据总览**：展会参与、展馆、展会、展商命中条数等指标卡。
+3. **数据总览**：展会参与、展馆、展会、展商、指定展会参展企业命中条数等指标卡。
 4. **核心分析**（展会专属子章节，由 `core_analysis.sections` 驱动渲染，按命中维度呈现，空维度自动跳过）：
    - 展会参与（表：展会名称 / 行业 / 区域 / 日期 / 展馆 / 参展身份 / 展位号）。
    - 展馆查询（表：展馆名称 / 区域 / 地址 / 面积 / 展厅数）。
    - 展会查询（表：展会名称 / 行业 / 区域 / 日期 / 展馆 / 主办单位）。
    - 展商查询（表：展商名称 / 参展展会 / 行业 / 区域 / 展位号）。
+   - 指定展会参展企业（表：企业名称 / 企业 ID；仅对应报告中所选展会 ID 与届次）。
 5. **代表性记录**：关键展会 / 展商记录 Top N。
-6. **特征与洞察**：结构化解读（参展活跃度 / 参展行业集中度 / 市场展会规模 / 展商密度 / 展馆资源），每条含 `feature` / `evidence` / `interpretation`。
+6. **特征与洞察**：结构化事实摘要（上游收录数、当前页分布、开放标记及核验边界），每条含 `feature` / `evidence` / `interpretation`。记录数不得用于推断营销投入、品牌建设、区域/行业活跃度或当前开展状态。
 7. **数据口径与来源**：MCP server、数据产品、生成时间、是否 dry-run、模式（enterprise / market_search）。
+
+分页结果必须同时披露“上游总量”和“当前页展示数”；当前页派生的展馆集中度或年度分布不得冒充全量统计。展会关键词查询不支持地区过滤时，必须标为全国关键词口径，不能承接指定城市结论。未请求的维度不是调用失败，不进入 `tool_errors`。
+
+展会关键词检索必须保留上游当前页全部记录，并逐条标记“名称命中 / 简介命中 / 待核”；上游关键词返回不等于每条记录都与主题直接相关，不得静默丢弃疑似误匹配记录。`isOpen` 只呈现为“上游开放标记=值”，当前状态须结合实际起止日期另行核验。
 
 ## 质量底线
 
@@ -80,6 +85,16 @@ python scripts/compose_report.py \
 # 4. 重渲染已有 JSON
 python scripts/render_report.py --input output/exhibition.json --output output/exhibition.html
 python scripts/render_report.py --input output/exhibition.json --output output/exhibition.md
+
+# 5. 只查展会（不会调用展商查询）
+python scripts/compose_report.py \
+  --search "半导体" --search-target exhibition --page-size 10 \
+  --output output/fair_search.json --report-output output/fair_search.html
+
+# 6. 展会搜索 -> 真实展会 ID -> 参展企业
+python scripts/compose_report.py \
+  --fair-exhibitors "中国国际线缆及线材展览会" --fair-result-index 1 --page-size 10 \
+  --output output/fair_exhibitors.json --report-output output/fair_exhibitors.html
 ```
 
 返回：JSON 路径、HTML 路径、Markdown 路径，以及企业全称映射 / 检索条件与数据口径摘要（含模式标注）。
