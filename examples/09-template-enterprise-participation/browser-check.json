@@ -1,0 +1,39 @@
+{
+  "metric_overflows": [],
+  "document_title": "珠海市杰理科技股份有限公司 展会大数据报告（企业参展）",
+  "title_matches": true,
+  "charts": 2,
+  "rendered_charts": 2,
+  "zero_size_charts": 0,
+  "chart_details": [
+    {
+      "width": 984,
+      "height": 300,
+      "instance": true,
+      "renderer": true,
+      "graphics": 23
+    },
+    {
+      "width": 984,
+      "height": 300,
+      "instance": true,
+      "renderer": true,
+      "graphics": 29
+    }
+  ],
+  "page_width": 1905,
+  "viewport_width": 1920,
+  "empty_headers": 0,
+  "script_errors": [],
+  "external_resources": 0,
+  "external_asset_references": 0,
+  "ok": true,
+  "report_html_sha256": "332d7481fb8d7fe562063dbe391b40bf31bd21781f57a55d940b95743db5527b",
+  "report_json_sha256": "e5a579d2ba5cedc5b73ec3dac68a2fc6af196e4abb7a2b7a2cbe776e1683b136",
+  "skill": "exhibition-skill",
+  "id": "09-template-enterprise-participation",
+  "browser": "Ego Lite",
+  "space_id": 4,
+  "offline": true,
+  "checked_at": "2026-10-27T03:03:06.674Z"
+}

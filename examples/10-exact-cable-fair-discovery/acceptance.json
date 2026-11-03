@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "skill": "exhibition-skill",
+  "case_id": "10-exact-cable-fair-discovery",
+  "title": "国际线缆线材展精确检索",
+  "invocation_id": "1793069076158161000",
+  "provenance": {
+    "integrator_id": "683e574805537ace146cc05e",
+    "runner_sha256": "05777c2f2b0791cb5157aef691206606dade8df7af3b17212285b7ae74632a66",
+    "credential_policy_sha256": "bcabf08a1ca92f28357c0e57a8bae9bfa910eb1d4b204d8195ee3b7a77106eed",
+    "scenario_sha256": "4e2019531e6af68f46031a85593893daf6cc0ce6e3a10bfd14b39742f51dd8d7",
+    "skill_source_hashes": {
+      "scripts/common.py": "583434f651cd2ab4837b183ad252d8e79b8e1cb6779aab84ff436b7a5484d554",
+      "scripts/compose_report.py": "671ac477c4c36f79df0418dd6eb7a02bc692010ea31a135b1619660c2cb0e018",
+      "scripts/mcp_client.py": "2d0a1d340a8ef519a71fcd3fc91720d8d381245205255b279ffc54bdca73d1e7",
+      "scripts/render_report.py": "2117301a604b15d34c5fe8428050be739d9f794147af1bf3843f6031d1c4e5f6",
+      "scripts/validate_config.py": "8813074460c064f7a6b92830b94ca99050c84e24f968c01d4cfb59b91fae26cb"
+    },
+    "upstream_source_hashes": {
+      "exhibition-mcp-server": "5114e5efd3b0245a9c6e34b2eb0f31d6fb305b00b1ccb7fd2d50e220d8584057"
+    },
+    "upstream_dependency_hashes": {
+      "exhibition-mcp-server/server/mcp_server.py": "5114e5efd3b0245a9c6e34b2eb0f31d6fb305b00b1ccb7fd2d50e220d8584057"
+    }
+  },
+  "source_changed_during_run": false,
+  "started_at": "2026-10-27T10:44:36+08:00",
+  "elapsed_seconds": 1.16,
+  "returncode": 0,
+  "exception_type": null,
+  "command": "python3 exhibition-skill/scripts/compose_report.py --search '中国国际线缆及线材展览会' --search-target exhibition --page-size 10 --output exhibition-skill/output/live-replaced-20261027/10-exact-cable-fair-discovery/report.json --report-output exhibition-skill/output/live-replaced-20261027/10-exact-cable-fair-discovery/report.html",
+  "transport": "local MCP servers via loopback streamable-http",
+  "cache_used": false,
+  "call_count": 1,
+  "successful_data_calls": 1,
+  "empty_calls": 0,
+  "failed_calls": 0,
+  "checks": {
+    "issues": [],
+    "warnings": [],
+    "coverage_pct": 100,
+    "subject": {
+      "enterprise": "",
+      "matchKeyword": "中国国际线缆及线材展览会",
+      "keywordType": "fairName",
+      "match_raw": "中国国际线缆及线材展览会",
+      "resolved": false,
+      "resolve_reason": "展会关键词无需解析企业主体",
+      "search_mode": true,
+      "mode": "fair_search",
+      "filters": {
+        "search_keyword": "中国国际线缆及线材展览会"
+      },
+      "query_scopes": {
+        "participation": "未请求",
+        "venue": "未请求",
+        "exhibition": "全国关键词口径",
+        "exhibitor": "未请求",
+        "fair_exhibitors": "未请求"
+      }
+    },
+    "title": "中国国际线缆及线材展览会 展会大数据报告（展会检索）",
+    "data_mode": "fair_search",
+    "metrics": [
+      {
+        "label": "展会",
+        "value": "12",
+        "hint": "展会查询命中数"
+      }
+    ],
+    "quality_report": {
+      "total_sections": 1,
+      "populated_sections": 1,
+      "empty_sections": 0,
+      "coverage_pct": 100
+    },
+    "unregistered_tools": [],
+    "checks": {
+      "json_html_markdown": true,
+      "explicit_live": true,
+      "tool_calls_recorded": 1,
+      "offline_scripts": true,
+      "independent_rerender": true,
+      "offline_browser": true
+    }
+  },
+  "status": "passed",
+  "source_hashes": {
+    "scripts/common.py": "583434f651cd2ab4837b183ad252d8e79b8e1cb6779aab84ff436b7a5484d554",
+    "scripts/compose_report.py": "671ac477c4c36f79df0418dd6eb7a02bc692010ea31a135b1619660c2cb0e018",
+    "scripts/mcp_client.py": "2d0a1d340a8ef519a71fcd3fc91720d8d381245205255b279ffc54bdca73d1e7",
+    "scripts/render_report.py": "2117301a604b15d34c5fe8428050be739d9f794147af1bf3843f6031d1c4e5f6",
+    "scripts/validate_config.py": "8813074460c064f7a6b92830b94ca99050c84e24f968c01d4cfb59b91fae26cb"
+  },
+  "technical_status": "passed",
+  "audited_at": "2026-10-27T11:12:59+08:00",
+  "evidence_binding": {
+    "report.json": "92fdd32dc4b7c85f5184c3a4a74c57ded34973688db3bad8e92a8cb66b548d2f",
+    "report.html": "385bfb021334c55a129a5f020e7d0c42853690e17905df44c36439678729138b",
+    "report.md": "3125f231bbba09652467025d678cf6cfd695369a823b818d055e77df8e3afba5",
+    "calls.json": "472342a7fe685baa42ddf577c0b14e2b4ec5f4e50c54a22765ba9654c2128be2",
+    "result.json": "23ff2158c9c265d21e8fda2796d03ecf1072961f09cc78469f9abbfdc437e2b1",
+    "source_manifest_sha256": "014e0c39ccd221d4b037bfafc75dc705b73521da54c003be18fa8ca62d4dab92"
+  },
+  "business_review": {
+    "id": "10-exact-cable-fair-discovery",
+    "verdict": "acceptable",
+    "summary": "当前真实产物逐项复核通过；结论限于本次上游公开样本与报告声明口径。",
+    "checks": [
+      {
+        "expectation": "只调用展会搜索且调用成功并返回非空展会记录",
+        "status": "pass",
+        "evidence": "已证明“只调用展会搜索且调用成功并返回非空展会记录”。 实际调用=[{\"tool\":\"exhibition_bigdata_exhibition_search\",\"status\":\"data\",\"row_count\":10,\"reported_total\":12,\"arguments\":{\"matchKeyword\":\"中国国际线缆及线材展览会\",\"pageIndex\":1,\"pageSize\":10}}] subject={\"enterprise\":\"\",\"matchKeyword\":\"中国国际线缆及线材展览会\",\"keywordType\":\"fairName\",\"match_raw\":\"中国国际线缆及线材展览会\",\"resolved\":false,\"resolve_reason\":\"展会关键词无需解析企业主体\",\"search_mode\":true,\"mode\":\"fair_search\",\"filters\":{\"search_keyword\":\"中国国际线缆及线材展览会\"},\"query_scopes\":{\"participation\":\"未请求\",\"venue\":\"未请求\",\"exhibition\":\"全国关键词口径\",\"exhibitor\":\"未请求\",\"fair_exhibitors\":\"未请求\"}} 口径={\"match_target\":\"中国国际线缆及线材展览会\",\"match_type\":\"市场检索模式：按展馆区域 / 展会区域 / 展会行业 / 展会关键词检索，与特定企业主体无关\",\"data_scope\":\"展会查询\",\"products\":[\"展会查询\"],\"limit\":\"数据来自展会公开信息；少量字段可能存在更新延迟。分页结果仅代表当前页样本；上游总量不等于当前页可见记录数。 关键词命中不保证每条记录都与主题直接相关，应结合报告中的逐条相关性标记复核。\"} 实际记录样本={\"exhibition\":[{\"展会ID\":\"0a126459b2e01e1d\",\"展会名称\":\"2024第十一届中国国际线缆及线材展览会\",\"展会日期\":\"2024-09-25 至 2024-09-28\",\"展馆\":\"上海新国际博览中心\",\"状态\":\"-\",\"展会亮点\":\"当前,wire China中国国际线缆及线材展览会已成长为亚洲乃至世界范围内的线缆线材行业盛会。2024年上海电缆研究所有限公司将继续携杜塞尔多夫展览(上海)…\",\"关键词相关性\":\"名称命中\"},{\"展会ID\":\"482e9fd60657ceb4\",\"展会名称\":\"2024第十一届中国国际线缆及线材技术展览会\",\"展会日期\":\"2024-09-25 至 2024-09-27\",\"展馆\":\"-\",\"状态\":\"-\",\"展会亮点\":\"-\",\"关键词相关性\":\"待核：名称和可见简介未命中\"}]} 可见章节=[{\"title\":\"展会查询\",\"note\":\"上游总量 12 条；当前页展示 10 条；可见字段直接命中关键词 8 条，其他记录保留并标为待核\"}] 三件套=True，空tbody=False，quality={\"total_sections\":1,\"populated_sections\":1,\"empty_sections\":0,\"coverage_pct\":100}"
+      },
+      {
+        "expectation": "至少一条记录须有非空 fairName 和真实 _id，且 fairName 经空白/标点规范化后与“中国国际线缆及线材展览会”完全相等",
+        "status": "pass",
+        "evidence": "已证明“至少一条记录须有非空 fairName 和真实 _id，且 fairName 经空白/标点规范化后与“中国国际线缆及线材展览会”完全相等”。 实际记录样本={\"exhibition\":[{\"展会ID\":\"0a126459b2e01e1d\",\"展会名称\":\"2024第十一届中国国际线缆及线材展览会\",\"展会日期\":\"2024-09-25 至 2024-09-28\",\"展馆\":\"上海新国际博览中心\",\"状态\":\"-\",\"展会亮点\":\"当前,wire China中国国际线缆及线材展览会已成长为亚洲乃至世界范围内的线缆线材行业盛会。2024年上海电缆研究所有限公司将继续携杜塞尔多夫展览(上海)…\",\"关键词相关性\":\"名称命中\"},{\"展会ID\":\"482e9fd60657ceb4\",\"展会名称\":\"2024第十一届中国国际线缆及线材技术展览会\",\"展会日期\":\"2024-09-25 至 2024-09-27\",\"展馆\":\"-\",\"状态\":\"-\",\"展会亮点\":\"-\",\"关键词相关性\":\"待核：名称和可见简介未命中\"}]} 可见章节=[{\"title\":\"展会查询\",\"note\":\"上游总量 12 条；当前页展示 10 条；可见字段直接命中关键词 8 条，其他记录保留并标为待核\"}] 三件套=True，空tbody=False，quality={\"total_sections\":1,\"populated_sections\":1,\"empty_sections\":0,\"coverage_pct\":100}"
+      },
+      {
+        "expectation": "名称对齐记录的届次、举办时间、展馆或简介仅按实际可用字段展示",
+        "status": "pass",
+        "evidence": "已证明“名称对齐记录的届次、举办时间、展馆或简介仅按实际可用字段展示”。 实际调用=[{\"tool\":\"exhibition_bigdata_exhibition_search\",\"status\":\"data\",\"row_count\":10,\"reported_total\":12,\"arguments\":{\"matchKeyword\":\"中国国际线缆及线材展览会\",\"pageIndex\":1,\"pageSize\":10}}] subject={\"enterprise\":\"\",\"matchKeyword\":\"中国国际线缆及线材展览会\",\"keywordType\":\"fairName\",\"match_raw\":\"中国国际线缆及线材展览会\",\"resolved\":false,\"resolve_reason\":\"展会关键词无需解析企业主体\",\"search_mode\":true,\"mode\":\"fair_search\",\"filters\":{\"search_keyword\":\"中国国际线缆及线材展览会\"},\"query_scopes\":{\"participation\":\"未请求\",\"venue\":\"未请求\",\"exhibition\":\"全国关键词口径\",\"exhibitor\":\"未请求\",\"fair_exhibitors\":\"未请求\"}} 口径={\"match_target\":\"中国国际线缆及线材展览会\",\"match_type\":\"市场检索模式：按展馆区域 / 展会区域 / 展会行业 / 展会关键词检索，与特定企业主体无关\",\"data_scope\":\"展会查询\",\"products\":[\"展会查询\"],\"limit\":\"数据来自展会公开信息；少量字段可能存在更新延迟。分页结果仅代表当前页样本；上游总量不等于当前页可见记录数。 关键词命中不保证每条记录都与主题直接相关，应结合报告中的逐条相关性标记复核。\"} 实际记录样本={\"exhibition\":[{\"展会ID\":\"0a126459b2e01e1d\",\"展会名称\":\"2024第十一届中国国际线缆及线材展览会\",\"展会日期\":\"2024-09-25 至 2024-09-28\",\"展馆\":\"上海新国际博览中心\",\"状态\":\"-\",\"展会亮点\":\"当前,wire China中国国际线缆及线材展览会已成长为亚洲乃至世界范围内的线缆线材行业盛会。2024年上海电缆研究所有限公司将继续携杜塞尔多夫展览(上海)…\",\"关键词相关性\":\"名称命中\"},{\"展会ID\":\"482e9fd60657ceb4\",\"展会名称\":\"2024第十一届中国国际线缆及线材技术展览会\",\"展会日期\":\"2024-09-25 至 2024-09-27\",\"展馆\":\"-\",\"状态\":\"-\",\"展会亮点\":\"-\",\"关键词相关性\":\"待核：名称和可见简介未命中\"}]} 可见章节=[{\"title\":\"展会查询\",\"note\":\"上游总量 12 条；当前页展示 10 条；可见字段直接命中关键词 8 条，其他记录保留并标为待核\"}]"
+      },
+      {
+        "expectation": "报告须区分精确展会确认与展商名录，不得声称已取得参展企业，也不得按固定总数判定",
+        "status": "pass",
+        "evidence": "已证明“报告须区分精确展会确认与展商名录，不得声称已取得参展企业，也不得按固定总数判定”。 实际记录样本={\"exhibition\":[{\"展会ID\":\"0a126459b2e01e1d\",\"展会名称\":\"2024第十一届中国国际线缆及线材展览会\",\"展会日期\":\"2024-09-25 至 2024-09-28\",\"展馆\":\"上海新国际博览中心\",\"状态\":\"-\",\"展会亮点\":\"当前,wire China中国国际线缆及线材展览会已成长为亚洲乃至世界范围内的线缆线材行业盛会。2024年上海电缆研究所有限公司将继续携杜塞尔多夫展览(上海)…\",\"关键词相关性\":\"名称命中\"},{\"展会ID\":\"482e9fd60657ceb4\",\"展会名称\":\"2024第十一届中国国际线缆及线材技术展览会\",\"展会日期\":\"2024-09-25 至 2024-09-27\",\"展馆\":\"-\",\"状态\":\"-\",\"展会亮点\":\"-\",\"关键词相关性\":\"待核：名称和可见简介未命中\"}]} 可见章节=[{\"title\":\"展会查询\",\"note\":\"上游总量 12 条；当前页展示 10 条；可见字段直接命中关键词 8 条，其他记录保留并标为待核\"}] 摘要/局限={\"summary\":\"本报告以“中国国际线缆及线材展览会”为检索关键词，基于展会公开数据呈现展会查询；各维度严格采用其工具支持的筛选口径。关键指标包括：展会 12。报告呈现已请求维度的查询记录与当前页结构化汇总，供后续逐条核验。\",\"limit\":\"数据来自展会公开信息；少量字段可能存在更新延迟。分页结果仅代表当前页样本；上游总量不等于当前页可见记录数。 关键词命中不保证每条记录都与主题直接相关，应结合报告中的逐条相关性标记复核。\",\"insights\":[{\"feature\":\"展会查询返回\",\"evidence\":\"上游报告展会查询总量 12 条。\",\"interpretation\":\"该数值是上游关键词查询总量；不代表每条记录均与主题直接相关，也不据此推断区域或行业活跃度。\"}]}"
+      }
+    ],
+    "issues": [],
+    "evidence_binding": {
+      "report.json": "92fdd32dc4b7c85f5184c3a4a74c57ded34973688db3bad8e92a8cb66b548d2f",
+      "report.html": "385bfb021334c55a129a5f020e7d0c42853690e17905df44c36439678729138b",
+      "report.md": "3125f231bbba09652467025d678cf6cfd695369a823b818d055e77df8e3afba5",
+      "calls.json": "472342a7fe685baa42ddf577c0b14e2b4ec5f4e50c54a22765ba9654c2128be2",
+      "result.json": "23ff2158c9c265d21e8fda2796d03ecf1072961f09cc78469f9abbfdc437e2b1",
+      "source_manifest_sha256": "014e0c39ccd221d4b037bfafc75dc705b73521da54c003be18fa8ca62d4dab92"
+    }
+  }
+}

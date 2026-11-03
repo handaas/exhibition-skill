@@ -1,0 +1,50 @@
+[
+  {
+    "tool": "exhibition_bigdata_exhibition_participation",
+    "domain": null,
+    "arguments": {
+      "matchKeyword": "华为技术有限公司",
+      "keywordType": "name",
+      "pageIndex": 1,
+      "pageSize": 10
+    },
+    "invocation_id": "1793069074619442000",
+    "elapsed_seconds": 0.917,
+    "status": "data",
+    "error_category": null,
+    "result_type": "dict",
+    "top_level_fields": [
+      "resultList",
+      "total"
+    ],
+    "row_count": 10,
+    "reported_total": 255,
+    "numeric_evidence": [
+      {
+        "path": "resultList[0].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[1].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[2].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[3].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[4].isOpen",
+        "value": 1
+      },
+      {
+        "path": "total",
+        "value": 255
+      }
+    ],
+    "response_sha256": "5e692745a11d9bdf54e6b4192771a2e1658d61372cb33b518dd2970be92a544b"
+  }
+]

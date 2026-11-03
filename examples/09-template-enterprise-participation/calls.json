@@ -1,0 +1,38 @@
+[
+  {
+    "tool": "exhibition_bigdata_exhibition_participation",
+    "domain": null,
+    "arguments": {
+      "matchKeyword": "珠海市杰理科技股份有限公司",
+      "keywordType": "name",
+      "pageIndex": 1,
+      "pageSize": 10
+    },
+    "invocation_id": "1793069076117209000",
+    "elapsed_seconds": 1.109,
+    "status": "data",
+    "error_category": null,
+    "result_type": "dict",
+    "top_level_fields": [
+      "resultList",
+      "total"
+    ],
+    "row_count": 2,
+    "reported_total": 2,
+    "numeric_evidence": [
+      {
+        "path": "resultList[0].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[1].isOpen",
+        "value": 1
+      },
+      {
+        "path": "total",
+        "value": 2
+      }
+    ],
+    "response_sha256": "bb6afc851faed01af7d166c42b64f106167fdbc357683119923f8312dad2a1f6"
+  }
+]

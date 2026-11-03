@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "skill": "exhibition-skill",
+  "case_id": "10-exact-cable-fair-discovery",
+  "title": "国际线缆线材展精确检索",
+  "invocation_id": "1793069076158161000",
+  "provenance": {
+    "integrator_id": "683e574805537ace146cc05e",
+    "runner_sha256": "05777c2f2b0791cb5157aef691206606dade8df7af3b17212285b7ae74632a66",
+    "credential_policy_sha256": "bcabf08a1ca92f28357c0e57a8bae9bfa910eb1d4b204d8195ee3b7a77106eed",
+    "scenario_sha256": "4e2019531e6af68f46031a85593893daf6cc0ce6e3a10bfd14b39742f51dd8d7",
+    "skill_source_hashes": {
+      "scripts/common.py": "583434f651cd2ab4837b183ad252d8e79b8e1cb6779aab84ff436b7a5484d554",
+      "scripts/compose_report.py": "671ac477c4c36f79df0418dd6eb7a02bc692010ea31a135b1619660c2cb0e018",
+      "scripts/mcp_client.py": "2d0a1d340a8ef519a71fcd3fc91720d8d381245205255b279ffc54bdca73d1e7",
+      "scripts/render_report.py": "2117301a604b15d34c5fe8428050be739d9f794147af1bf3843f6031d1c4e5f6",
+      "scripts/validate_config.py": "8813074460c064f7a6b92830b94ca99050c84e24f968c01d4cfb59b91fae26cb"
+    },
+    "upstream_source_hashes": {
+      "exhibition-mcp-server": "5114e5efd3b0245a9c6e34b2eb0f31d6fb305b00b1ccb7fd2d50e220d8584057"
+    },
+    "upstream_dependency_hashes": {
+      "exhibition-mcp-server/server/mcp_server.py": "5114e5efd3b0245a9c6e34b2eb0f31d6fb305b00b1ccb7fd2d50e220d8584057"
+    }
+  },
+  "source_changed_during_run": false,
+  "started_at": "2026-10-27T10:44:36+08:00",
+  "elapsed_seconds": 1.16,
+  "returncode": 0,
+  "exception_type": null,
+  "command": "python3 exhibition-skill/scripts/compose_report.py --search '中国国际线缆及线材展览会' --search-target exhibition --page-size 10 --output exhibition-skill/output/live-replaced-20261027/10-exact-cable-fair-discovery/report.json --report-output exhibition-skill/output/live-replaced-20261027/10-exact-cable-fair-discovery/report.html",
+  "transport": "local MCP servers via loopback streamable-http",
+  "cache_used": false,
+  "call_count": 1,
+  "successful_data_calls": 1,
+  "empty_calls": 0,
+  "failed_calls": 0,
+  "checks": {
+    "issues": [],
+    "warnings": [],
+    "coverage_pct": 100,
+    "subject": {
+      "enterprise": "",
+      "matchKeyword": "中国国际线缆及线材展览会",
+      "keywordType": "fairName",
+      "match_raw": "中国国际线缆及线材展览会",
+      "resolved": false,
+      "resolve_reason": "展会关键词无需解析企业主体",
+      "search_mode": true,
+      "mode": "fair_search",
+      "filters": {
+        "search_keyword": "中国国际线缆及线材展览会"
+      },
+      "query_scopes": {
+        "participation": "未请求",
+        "venue": "未请求",
+        "exhibition": "全国关键词口径",
+        "exhibitor": "未请求",
+        "fair_exhibitors": "未请求"
+      }
+    },
+    "title": "中国国际线缆及线材展览会 展会大数据报告（展会检索）",
+    "data_mode": "fair_search",
+    "metrics": [
+      {
+        "label": "展会",
+        "value": "12",
+        "hint": "展会查询命中数"
+      }
+    ],
+    "quality_report": {
+      "total_sections": 1,
+      "populated_sections": 1,
+      "empty_sections": 0,
+      "coverage_pct": 100
+    },
+    "unregistered_tools": [],
+    "checks": {
+      "json_html_markdown": true,
+      "explicit_live": true,
+      "tool_calls_recorded": 1,
+      "offline_scripts": true,
+      "independent_rerender": true
+    }
+  },
+  "status": "passed",
+  "source_hashes": {
+    "scripts/common.py": "583434f651cd2ab4837b183ad252d8e79b8e1cb6779aab84ff436b7a5484d554",
+    "scripts/compose_report.py": "671ac477c4c36f79df0418dd6eb7a02bc692010ea31a135b1619660c2cb0e018",
+    "scripts/mcp_client.py": "2d0a1d340a8ef519a71fcd3fc91720d8d381245205255b279ffc54bdca73d1e7",
+    "scripts/render_report.py": "2117301a604b15d34c5fe8428050be739d9f794147af1bf3843f6031d1c4e5f6",
+    "scripts/validate_config.py": "8813074460c064f7a6b92830b94ca99050c84e24f968c01d4cfb59b91fae26cb"
+  }
+}

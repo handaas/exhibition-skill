@@ -1,0 +1,40 @@
+{
+  "metric_overflows": [],
+  "document_title": "华为技术有限公司 展会大数据报告（企业参展）",
+  "title_matches": true,
+  "charts": 2,
+  "rendered_charts": 2,
+  "zero_size_charts": 0,
+  "chart_details": [
+    {
+      "width": 984,
+      "height": 300,
+      "instance": true,
+      "renderer": true,
+      "graphics": 47
+    },
+    {
+      "width": 984,
+      "height": 300,
+      "instance": true,
+      "renderer": true,
+      "graphics": 33
+    }
+  ],
+  "page_width": 1905,
+  "viewport_width": 1920,
+  "empty_headers": 0,
+  "script_errors": [],
+  "external_resources": 0,
+  "external_asset_references": 0,
+  "ok": true,
+  "report_html_sha256": "fb3f6b6df0b82fe2d6ad95cabc76a82d5fea233f44ab431219b6fb6c572563c0",
+  "report_json_sha256": "aae00b938d19c834e3c2e7905658d6d7a4cd1bd15f21908eabb7a739d51caabf",
+  "screenshot": "browser.png",
+  "skill": "exhibition-skill",
+  "id": "01-enterprise-participation",
+  "browser": "Ego Lite",
+  "space_id": 4,
+  "offline": true,
+  "checked_at": "2026-10-27T03:03:03.784Z"
+}

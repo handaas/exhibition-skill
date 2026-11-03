@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:," />
-  <title>华为技术有限公司 展会大数据报告（企业参展）</title>
+  <title>半导体 展会大数据报告（展会检索）</title>
   <style>
     :root { --bg:#eef1f5; --card:#ffffff; --text:#1f2937; --muted:#64748b; --line:#d8dee8; --blue:#003b71; --deep:#003b71; --red:#7f1d1d; --gold:#d97706; --stripe:#666; }
     * { box-sizing:border-box; letter-spacing:0 !important; }
@@ -145,6 +145,7 @@
     .chart-box-gauge { max-width:380px; }
     .chart-title { margin:0 0 8px; color:#0b3768; font-size:15px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
     .chart-canvas { width:100%; height:300px; }
+    .chart-canvas[data-chart-state="waiting"],.chart-canvas[data-chart-state="error"] { display:flex; align-items:center; justify-content:center; color:#64748b; font-size:13px; text-align:center; }
     .chart-box-gauge .chart-canvas { height:240px; }
     .chart-data { margin-top:10px; }
     .chart-data summary { cursor:pointer; color:#0b5ca8; font-size:12px; font-weight:700; padding:4px 0; }
@@ -212,16 +213,70 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
 </script>
   <script>
 (function(){
-  window.__echarts_instances=[];
+  if(window.__handaas_boot_charts){window.__handaas_boot_charts();return;}
+  window.__echarts_instances=window.__echarts_instances||[];
+  var status=window.__handaas_chart_status={state:'waiting',total:0,ready:0,failed:0};
+  var timer=null, retries=0, MAX_RETRIES=100;
+  var layoutRetries=0, MAX_LAYOUT_RETRIES=50;
+  var PALETTE=['#0b5ca8','#0284c7','#0b3768','#d97706','#059669','#dc2626','#7c3aed','#db2777','#0891b2','#65a30d'];
+  var FONTS='-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif';
+  function summarize(nodes){
+    status.total=nodes.length;status.ready=0;status.failed=0;
+    nodes.forEach(function(el){
+      if(el.getAttribute('data-chart-state')==='ready'){status.ready++;}
+      else if(el.getAttribute('data-chart-state')==='error'){status.failed++;}
+    });
+    status.state=status.ready===status.total?'ready':
+      (status.ready+status.failed===status.total?(status.ready?'degraded':'error'):'waiting');
+  }
+  function raf(fn){if(window.requestAnimationFrame){window.requestAnimationFrame(fn);}else{fn();}}
   function boot(){
-    if(typeof echarts==='undefined'){return;}
-    var PALETTE=['#0b5ca8','#0284c7','#0b3768','#d97706','#059669','#dc2626','#7c3aed','#db2777','#0891b2','#65a30d'];
-    var FONTS='-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif';
-    document.querySelectorAll('.chart-canvas').forEach(function(el){
-      var raw=el.getAttribute('data-spec'); if(!raw){return;}
-      var spec; try{spec=JSON.parse(raw.replace(/&quot;/g,'"').replace(/&amp;/g,'&'));}catch(e){return;}
-      var chart=echarts.init(el,null,{renderer:'svg'});
-      window.__echarts_instances.push(chart);
+    if(document.readyState==='loading'){return;}
+    var nodes=document.querySelectorAll('.chart-canvas');
+    if(!nodes.length){summarize(nodes);return;}
+    if(!window.echarts || typeof window.echarts.init!=='function'){
+      var exhausted=retries>=MAX_RETRIES;
+      nodes.forEach(function(el){
+        if(el.__handaas_chart_ready){return;}
+        el.__handaas_dependency_error=true;
+        el.setAttribute('data-chart-state',exhausted?'error':'waiting');
+        el.textContent=exhausted?'图表库加载失败或不可用，请查看数据明细或重新生成离线报告。':'图表库正在加载，数据明细仍可查看。';
+      });
+      summarize(nodes);
+      if(!exhausted && timer===null){
+        retries++;
+        timer=setTimeout(function(){timer=null;boot();},100);
+      }
+      return;
+    }
+    if(timer!==null){clearTimeout(timer);timer=null;}
+    var pendingLayout=0;
+    nodes.forEach(function(el){
+      if(el.__handaas_chart_ready){return;}
+      if(el.getAttribute('data-chart-state')==='error' && !el.__handaas_dependency_error){return;}
+      if(window.ResizeObserver && !el.__handaas_resize_observer){
+        el.__handaas_resize_observer=new ResizeObserver(function(){
+          var current=el.__handaas_chart;
+          if(current && typeof current.resize==='function'){try{current.resize();}catch(ignored){}}
+          else{boot();}
+        });
+        el.__handaas_resize_observer.observe(el);
+      }
+      if((el.getClientRects && el.getClientRects().length===0) || el.clientWidth<2 || el.clientHeight<2){
+        el.setAttribute('data-chart-state','waiting');
+        el.textContent='图表等待布局完成后渲染，数据明细仍可查看。';
+        pendingLayout++;
+        return;
+      }
+      var chart=null;
+      try{
+        var raw=el.getAttribute('data-spec');
+        if(!raw){throw new Error('Missing chart configuration');}
+        // getAttribute already decodes HTML entities; a second decode corrupts labels.
+        var spec=JSON.parse(raw);
+        if(['line','bar','pie','gauge','radar'].indexOf(spec.type)<0){throw new Error('Unsupported chart type');}
+        el.textContent='';
+        chart=window.echarts.init(el,null,{renderer:'svg'});
       var opt={color:PALETTE,tooltip:{trigger: spec.type==='pie'?'item':'axis'},textStyle:{fontFamily:FONTS,fontSize:12,color:'#334155'},grid:{left:48,right:24,top:30,bottom:40},legend:{top:0,textStyle:{fontSize:11}}};
       if(spec.type==='line'){
         opt.xAxis={type:'category',data:spec.x,axisLabel:{fontSize:11,interval:0,rotate: spec.x && spec.x.length>6?35:0}};
@@ -247,14 +302,47 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
         opt.radar={indicator:spec.indicators,radius:'62%',axisName:{color:'#475569',fontSize:11},splitArea:{areaStyle:{color:['#f8fbff','#eef4fb']}}};
         opt.series=[{type:'radar',areaStyle:{opacity:0.18},data:spec.series}];
       }
-      chart.setOption(opt);
-      window.addEventListener('resize',function(){chart.resize();});
+        chart.setOption(opt);
+        el.__handaas_chart=chart;
+        el.__handaas_chart_ready=true;
+        el.__handaas_dependency_error=false;
+        el.setAttribute('data-chart-state','ready');
+        window.__echarts_instances.push(chart);
+        raf(function(){try{chart.resize();}catch(ignored){}});
+      }catch(e){
+        if(chart && typeof chart.dispose==='function'){try{chart.dispose();}catch(ignored){}}
+        el.__handaas_dependency_error=false;
+        el.setAttribute('data-chart-state','error');
+        el.textContent='图表绘制失败，请查看数据明细。';
+      }
     });
+    summarize(nodes);
+    if(pendingLayout && layoutRetries<MAX_LAYOUT_RETRIES){
+      layoutRetries++;
+      setTimeout(boot,100);
+    }
   }
-  if(document.readyState!=='loading'){boot();}else{document.addEventListener('DOMContentLoaded',boot);}
+  window.__handaas_boot_charts=boot;
   window.__echarts_resize_all=function(){
     (window.__echarts_instances||[]).forEach(function(c){try{c.resize();}catch(e){}});
   };
+  function bootAfterLayout(){
+    raf(function(){boot();window.__echarts_resize_all();});
+  }
+  window.addEventListener('resize',window.__echarts_resize_all);
+  window.addEventListener('load',bootAfterLayout);
+  window.addEventListener('pageshow',bootAfterLayout);
+  window.addEventListener('handaas:echarts-ready',bootAfterLayout);
+  window.addEventListener('orientationchange',bootAfterLayout);
+  // A very late external script can still recover after the bounded retry ends.
+  document.addEventListener('load',function(event){
+    if(event.target && event.target.tagName==='SCRIPT'){boot();}
+  },true);
+  document.addEventListener('DOMContentLoaded',bootAfterLayout);
+  document.addEventListener('visibilitychange',boot);
+  if(document.fonts && document.fonts.ready){document.fonts.ready.then(function(){window.__echarts_resize_all();});}
+  [0,300,1000,2500].forEach(function(ms){setTimeout(function(){boot();window.__echarts_resize_all();},ms);});
+  boot();
 })();
 </script>
 </head>
@@ -264,51 +352,37 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
     <div class="cover-grid">
       <aside class="cover-side">
         <h2 class="cover-side-title">展会大数据报告</h2>
-        <p class="cover-date">2026年08月10日</p>
+        <p class="cover-date">2026年10月27日</p>
         <h3 class="toc-title">目录</h3>
         <ol class="toc-list"><li><span>报告摘要</span></li><li><span>查询对象与口径</span></li><li><span>数据总览</span></li><li><span>核心分析</span></li><li><span>代表性记录</span></li><li><span>特征与洞察</span></li></ol>
         <h3 class="scope-title">报告口径</h3>
-        <div class="biz-scope"><div class="biz-scope-item"><span>匹配对象</span><strong>华为技术有限公司</strong></div><div class="biz-scope-item"><span>匹配方式</span><strong>展会参与按企业主体匹配（keywordType=name）；支持企业名称/注册号/统一社会信用代码/企业 id</strong></div><div class="biz-scope-item"><span>数据范围</span><strong>展会参与、展馆查询、展会查询、展商查询</strong></div><div class="biz-scope-item"><span>局限说明</span><strong>数据来自展会公开信息；少量字段可能存在更新延迟。</strong></div></div>
+        <div class="biz-scope"><div class="biz-scope-item"><span>匹配对象</span><strong>半导体</strong></div><div class="biz-scope-item"><span>匹配方式</span><strong>市场检索模式：按展馆区域 / 展会区域 / 展会行业 / 展会关键词检索，与特定企业主体无关</strong></div><div class="biz-scope-item"><span>数据范围</span><strong>展会查询</strong></div><div class="biz-scope-item"><span>局限说明</span><strong>数据来自展会公开信息；少量字段可能存在更新延迟。分页结果仅代表当前页样本；上游总量不等于当前页可见记录数。 关键词命中不保证每条记录都与主题直接相关，应结合报告中的逐条相关性标记复核。</strong></div></div>
       </aside>
       <section class="cover-main">
         <p class="report-kicker">EXHIBITION DATA RESEARCH</p>
-        <h1>华为技术有限公司 展会大数据报告（企业参展）</h1>
-        <p class="report-lead">本报告以“华为技术有限公司”为分析对象，基于展会公开数据，系统呈现企业展会参与记录及目标市场展馆、展会、展商检索结果。关键指标包括：展会参与 255。报告围绕展会参与度与市场检索规模给出结构化解读，便于线下营销、行业研究与展会选型决策参考</p>
+        <h1>半导体 展会大数据报告（展会检索）</h1>
+        <p class="report-lead">本报告以“半导体”为检索关键词，基于展会公开数据呈现展会查询；各维度严格采用其工具支持的筛选口径。关键指标包括：展会 433。报告呈现已请求维度的查询记录与当前页结构化汇总，供后续逐条核验</p>
         <div class="abstract-box">报告涵盖查询对象、数据总览、核心分析、代表性记录与结构洞察，所有数据均标注口径与来源。</div>
-        <div class="biz-metrics"><div class="biz-metric"><span class="m-name">展会参与</span><span class="m-tag"></span><span class="m-value">255</span></div><div class="biz-metric"><span class="m-name">参展展馆数</span><span class="m-tag"></span><span class="m-value">7</span></div><div class="biz-metric"><span class="m-name">展馆CR3</span><span class="m-tag"></span><span class="m-value">42.9%</span></div><div class="biz-metric"><span class="m-name">活跃年份</span><span class="m-tag"></span><span class="m-value">2</span></div><div class="biz-metric"><span class="m-name">最新参展年份</span><span class="m-tag"></span><span class="m-value">2026</span></div><div class="biz-metric"><span class="m-name">参展峰值</span><span class="m-tag"></span><span class="m-value">2026年 7次</span></div><div class="biz-metric-empty"></div><div class="biz-metric-empty"></div></div>
-        <ul class="exec-list"><li>参展频度反映企业线下营销投入与行业曝光度；持续参展通常意味着稳定的渠道与品牌建设。</li><li>展馆布局多元；高集中度反映核心展会阵地清晰，多元分布说明跨场馆/跨城市拓展。</li><li>参展频次上升反映线下营销加码或新业务推广；下降可能是预算收缩或转向线上。</li><li>开放/即将开展的展会占比高说明企业近期线下营销活跃；已结束为主则反映历史参展记录较多。</li></ul>
-        <div class="cover-findings"><h3 class="cover-findings-title">核心发现</h3><div class="cover-findings-grid"><div class="finding-card"><p class="f-label">参展活跃度</p><p class="f-text">企业展会参与记录 255 条。</p></div><div class="finding-card"><p class="f-label">参展展馆集中度</p><p class="f-text">“深圳会展中心”参展占比约 14%，前 3 展馆合计 43%（CR3）。</p></div><div class="finding-card"><p class="f-label">参展年度趋势</p><p class="f-text">峰值出现在“2026”（7 次），近年上升 133%，同比 +133%。</p></div><div class="finding-card"><p class="f-label">开展状态</p><p class="f-text">主要状态为“开放/即将开展”（10 / 10）。</p></div></div></div>
-        <div class="cover-dimensions"><span class="dim-label">分析维度</span><div class="dim-tags"><span class="dim-tag">展会参与</span><span class="dim-tag">参展展馆分布</span><span class="dim-tag">参展年度趋势</span></div></div>
-        <div class="cover-scope-bar"><span class="scope-item"><em>数据产品</em>展会参与、展馆查询、展会查询、展商查询</span><span class="scope-item"><em>覆盖范围</em>展会参与、展馆查询、展会查询、展商查询</span></div>
+        <div class="biz-metrics"><div class="biz-metric"><span class="m-name">展会</span><span class="m-tag"></span><span class="m-value">433</span></div><div class="biz-metric-empty"></div><div class="biz-metric-empty"></div><div class="biz-metric-empty"></div></div>
+        <ul class="exec-list"><li>该数值是上游关键词查询总量；不代表每条记录均与主题直接相关，也不据此推断区域或行业活跃度。</li></ul>
+        <div class="cover-findings"><h3 class="cover-findings-title">核心发现</h3><div class="cover-findings-grid"><div class="finding-card"><p class="f-label">展会查询返回</p><p class="f-text">上游报告展会查询总量 433 条。</p></div></div></div>
+        <div class="cover-dimensions"><span class="dim-label">分析维度</span><div class="dim-tags"><span class="dim-tag">展会查询</span></div></div>
+        <div class="cover-scope-bar"><span class="scope-item"><em>数据产品</em>展会查询</span><span class="scope-item"><em>覆盖范围</em>展会查询</span></div>
       </section>
     </div>
   </article>
   <main class="research-doc">
-    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>报告摘要</h2><p class="biz-section-note">概述分析对象、数据覆盖范围与核心发现。</p></div><span class="biz-tag">Summary</span></div><p class="biz-summary">本报告以“华为技术有限公司”为分析对象，基于展会公开数据，系统呈现企业展会参与记录及目标市场展馆、展会、展商检索结果。关键指标包括：展会参与 255。报告围绕展会参与度与市场检索规模给出结构化解读，便于线下营销、行业研究与展会选型决策参考</p></section>
-    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>查询对象与口径</h2><p class="biz-section-note">说明匹配对象、匹配方式与数据范围。</p></div><span class="biz-tag">Caliber</span></div><div class="info-list"><div class="info-row"><span class="info-label">匹配对象</span><span class="info-value">华为技术有限公司</span></div><div class="info-row"><span class="info-label">匹配方式</span><span class="info-value">展会参与按企业主体匹配（keywordType=name）；支持企业名称/注册号/统一社会信用代码/企业 id</span></div><div class="info-row"><span class="info-label">数据范围</span><span class="info-value">展会参与、展馆查询、展会查询、展商查询</span></div><div class="info-row"><span class="info-label">局限说明</span><span class="info-value">数据来自展会公开信息；少量字段可能存在更新延迟。</span></div></div></section>
-    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>数据总览</h2><p class="biz-section-note">关键指标一览。</p></div><span class="biz-tag">Metrics</span></div><div class="biz-metrics"><div class="biz-metric"><span class="m-name">展会参与</span><span class="m-tag"></span><span class="m-value">255</span></div><div class="biz-metric"><span class="m-name">参展展馆数</span><span class="m-tag"></span><span class="m-value">7</span></div><div class="biz-metric"><span class="m-name">展馆CR3</span><span class="m-tag"></span><span class="m-value">42.9%</span></div><div class="biz-metric"><span class="m-name">活跃年份</span><span class="m-tag"></span><span class="m-value">2</span></div><div class="biz-metric"><span class="m-name">最新参展年份</span><span class="m-tag"></span><span class="m-value">2026</span></div><div class="biz-metric"><span class="m-name">参展峰值</span><span class="m-tag"></span><span class="m-value">2026年 7次</span></div><div class="biz-metric-empty"></div><div class="biz-metric-empty"></div></div></section>
-    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>核心分析</h2><p class="biz-section-note">按维度展开目标核心数据与结构化明细。</p></div><span class="biz-tag">Analysis</span></div><h3 class="biz-subsection-title">展会参与</h3><p class="biz-section-note">企业展会参与记录 255 条</p><div class="table-wrap"><table><thead><tr><th>展会名称</th><th>展会日期</th><th>展馆</th><th>状态</th><th>展会亮点</th></tr></thead><tbody><tr><td>2026第20届中国（深圳）国际金融博览会</td><td>2026-05-27 至 2026-05-29</td><td>深圳会展中心</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2026第21届中国（武汉）光谷·国际光电子博览会</td><td>2026-05-18 至 2026-05-20</td><td>中国光谷科技会展中心</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2026中国（贵州）国际能源产业博览交易会</td><td>2026-05-18 至 2026-05-20</td><td>贵阳国际会议展览中心</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2026第35届中国（哈尔滨）国际经济贸易洽谈会</td><td>2026-05-17 至 2026-05-21</td><td>哈尔滨国际会展中心</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2026第32届中国（北京）国际广播电视信息网络展览会</td><td>2026-04-22 至 2026-04-25</td><td>首钢国际会展中心</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2026第24届中国（太原）煤炭能源工业技术装备展览会</td><td>2026-04-22 至 2026-04-24</td><td>太原潇河国际会展中心</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2026第16届中国（南京）国际道路交通安全产品博览会</td><td>2026-04-22 至 2026-04-24</td><td>南京国际博览中心</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2025安徽国际社会公共安全产品暨警用装备展览会</td><td>2025-08-08 至 2025-08-10</td><td>-</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2025第十三届互联网安全大会</td><td>2025-08-06 至 2025-08-09</td><td>-</td><td>开放/即将开展</td><td>-</td></tr><tr><td>2025第十七届中国国际现代化铁路技术装备展览会</td><td>2025-07-08 至 2025-07-10</td><td>-</td><td>开放/即将开展</td><td>-</td></tr></tbody></table></div>
-<p class="biz-section-note">按展馆聚合参展记录数</p><div class="chart-box"><h4 class="chart-title">参展展馆分布</h4><div class="chart-canvas" data-chart="bar" data-spec="{&quot;type&quot;:&quot;bar&quot;,&quot;orient&quot;:&quot;h&quot;,&quot;names&quot;:[&quot;深圳会展中心&quot;,&quot;中国光谷科技会展中心&quot;,&quot;贵阳国际会议展览中心&quot;,&quot;哈尔滨国际会展中心&quot;,&quot;首钢国际会展中心&quot;,&quot;太原潇河国际会展中心&quot;,&quot;南京国际博览中心&quot;],&quot;values&quot;:[1.0,1.0,1.0,1.0,1.0,1.0,1.0]}"></div><details class="chart-data"><summary>数据明细</summary><div class="table-wrap"><table><thead><tr><th>展馆</th><th>参展次数</th></tr></thead><tbody><tr><td>深圳会展中心</td><td>1</td></tr><tr><td>中国光谷科技会展中心</td><td>1</td></tr><tr><td>贵阳国际会议展览中心</td><td>1</td></tr><tr><td>哈尔滨国际会展中心</td><td>1</td></tr><tr><td>首钢国际会展中心</td><td>1</td></tr><tr><td>太原潇河国际会展中心</td><td>1</td></tr><tr><td>南京国际博览中心</td><td>1</td></tr></tbody></table></div></details></div>
-<p class="biz-section-note">按年度统计参展次数</p><div class="chart-box"><h4 class="chart-title">参展年度趋势</h4><div class="chart-canvas" data-chart="line" data-spec="{&quot;type&quot;:&quot;line&quot;,&quot;area&quot;:true,&quot;x&quot;:[&quot;2025&quot;,&quot;2026&quot;],&quot;series&quot;:[{&quot;name&quot;:&quot;参展年度趋势&quot;,&quot;data&quot;:[3.0,7.0]}]}"></div><details class="chart-data"><summary>数据明细</summary><div class="table-wrap"><table><thead><tr><th>年份</th><th>参展次数</th></tr></thead><tbody><tr><td>2025</td><td>3</td></tr><tr><td>2026</td><td>7</td></tr></tbody></table></div></details></div></section>
-    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>代表性记录</h2><p class="biz-section-note">关键明细记录 Top N。</p></div><span class="biz-tag">Records</span></div><div class="table-wrap"><table><thead><tr><th>展会名称</th><th>展会日期</th><th>展馆</th><th>状态</th></tr></thead><tbody><tr><td>2026第20届中国（深圳）国际金融博览会</td><td>2026-05-27 至 2026-05-29</td><td>深圳会展中心</td><td>开放/即将开展</td></tr><tr><td>2026第21届中国（武汉）光谷·国际光电子博览会</td><td>2026-05-18 至 2026-05-20</td><td>中国光谷科技会展中心</td><td>开放/即将开展</td></tr><tr><td>2026中国（贵州）国际能源产业博览交易会</td><td>2026-05-18 至 2026-05-20</td><td>贵阳国际会议展览中心</td><td>开放/即将开展</td></tr><tr><td>2026第35届中国（哈尔滨）国际经济贸易洽谈会</td><td>2026-05-17 至 2026-05-21</td><td>哈尔滨国际会展中心</td><td>开放/即将开展</td></tr><tr><td>2026第32届中国（北京）国际广播电视信息网络展览会</td><td>2026-04-22 至 2026-04-25</td><td>首钢国际会展中心</td><td>开放/即将开展</td></tr><tr><td>2026第24届中国（太原）煤炭能源工业技术装备展览会</td><td>2026-04-22 至 2026-04-24</td><td>太原潇河国际会展中心</td><td>开放/即将开展</td></tr><tr><td>2026第16届中国（南京）国际道路交通安全产品博览会</td><td>2026-04-22 至 2026-04-24</td><td>南京国际博览中心</td><td>开放/即将开展</td></tr><tr><td>2025安徽国际社会公共安全产品暨警用装备展览会</td><td>2025-08-08 至 2025-08-10</td><td>-</td><td>开放/即将开展</td></tr><tr><td>2025第十三届互联网安全大会</td><td>2025-08-06 至 2025-08-09</td><td>-</td><td>开放/即将开展</td></tr><tr><td>2025第十七届中国国际现代化铁路技术装备展览会</td><td>2025-07-08 至 2025-07-10</td><td>-</td><td>开放/即将开展</td></tr></tbody></table></div></section>
+    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>报告摘要</h2><p class="biz-section-note">概述分析对象、数据覆盖范围与核心发现。</p></div><span class="biz-tag">Summary</span></div><p class="biz-summary">本报告以“半导体”为检索关键词，基于展会公开数据呈现展会查询；各维度严格采用其工具支持的筛选口径。关键指标包括：展会 433。报告呈现已请求维度的查询记录与当前页结构化汇总，供后续逐条核验</p></section>
+    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>查询对象与口径</h2><p class="biz-section-note">说明匹配对象、匹配方式与数据范围。</p></div><span class="biz-tag">Caliber</span></div><div class="info-list"><div class="info-row"><span class="info-label">匹配对象</span><span class="info-value">半导体</span></div><div class="info-row"><span class="info-label">匹配方式</span><span class="info-value">市场检索模式：按展馆区域 / 展会区域 / 展会行业 / 展会关键词检索，与特定企业主体无关</span></div><div class="info-row"><span class="info-label">数据范围</span><span class="info-value">展会查询</span></div><div class="info-row"><span class="info-label">局限说明</span><span class="info-value">数据来自展会公开信息；少量字段可能存在更新延迟。分页结果仅代表当前页样本；上游总量不等于当前页可见记录数。 关键词命中不保证每条记录都与主题直接相关，应结合报告中的逐条相关性标记复核。</span></div></div></section>
+    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>数据总览</h2><p class="biz-section-note">关键指标一览。</p></div><span class="biz-tag">Metrics</span></div><div class="biz-metrics"><div class="biz-metric"><span class="m-name">展会</span><span class="m-tag"></span><span class="m-value">433</span></div><div class="biz-metric-empty"></div><div class="biz-metric-empty"></div><div class="biz-metric-empty"></div></div></section>
+    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>核心分析</h2><p class="biz-section-note">按维度展开目标核心数据与结构化明细。</p></div><span class="biz-tag">Analysis</span></div><h3 class="biz-subsection-title">展会查询</h3><p class="biz-section-note">上游总量 433 条；当前页展示 10 条；可见字段直接命中关键词 5 条，其他记录保留并标为待核</p><div class="table-wrap"><table><thead><tr><th>展会ID</th><th>展会名称</th><th>展会日期</th><th>展馆</th><th>状态</th><th>展会亮点</th><th>关键词相关性</th></tr></thead><tbody><tr><td>8e037d501ea849f3</td><td>2026中国（杭州）国际半导体与集成电路产业创新博览会</td><td>2026-05-14 至 2026-05-16</td><td>杭州大会展中心</td><td>-</td><td>-</td><td>名称命中</td></tr><tr><td>3f7340b77397f05c</td><td>2026上海半导体展（SEMICON China）</td><td>2026-03-25</td><td>上海新国际博览中心</td><td>-</td><td>-</td><td>名称命中</td></tr><tr><td>bc5b503828926914</td><td>2026中国（上海）国际半导体设备、材料、制造和服务展览会</td><td>2026-03-25 至 2026-03-27</td><td>上海新国际博览中心</td><td>-</td><td>-</td><td>名称命中</td></tr><tr><td>70c54f557c044536</td><td>2025第八届深圳国际锂电池技术展览会</td><td>2025-11-24 至 2025-11-26</td><td>深圳会展中心</td><td>-</td><td>2025第八届深圳国际锂电池技术展览会,简称:深圳锂电技术展 IBTE,此会是中国首屈一指的专业锂电技术展,专注于:电芯、材料、设备、展会由:深圳市电池行业协…</td><td>待核：名称和可见简介未命中</td></tr><tr><td>d19a80067b12476c</td><td>AUTO TECH 2025第十二届广州国际汽车技术展览会</td><td>2025-11-20 至 2025-11-22</td><td>广州保利世贸博览馆</td><td>-</td><td>AUTO TECH 2025 华南展是由汽车技术相关的展览及高峰技术论坛组成,将于2025年11月20日-22日在广州保利世贸博览馆举办;组委会设立汽车电子技…</td><td>待核：名称和可见简介未命中</td></tr><tr><td>104a1b822f5b0927</td><td>2025电子半导体产业创新发展大会暨国际电子电路(大湾区)展览会</td><td>2025-10-29 至 2025-10-31</td><td>深圳国际会展中心(新馆)</td><td>-</td><td>技术引领,融合绽放,CPCA Show Plus 2024电子半导体产业创新发展大会在深圳成功举行 2024年11月6日,备受电子电路及半导体行业瞩目的电子半…</td><td>名称命中</td></tr><tr><td>9b117d4a7d5fa8cc</td><td>2025湾区半导体产业生态博览会</td><td>2025-10-15</td><td>深圳会展中心</td><td>-</td><td>-</td><td>名称命中</td></tr><tr><td>e1185a314b437263</td><td>2025武汉国际汽车服务用品、美容养护汽车电子、改装、后市场博览会</td><td>2025-10-11 至 2025-10-13</td><td>武汉国际博览中心</td><td>-</td><td>汽车后市场是指汽车销售以后,围绕汽车使用过程中的各种服务,它涵盖了消费者买车后所需要的一切服务。也就是说,汽车从售出到报废的过程中,围绕汽车售后使用环节中各种…</td><td>待核：名称和可见简介未命中</td></tr><tr><td>a8f14d66ca70f692</td><td>2025中国(武汉)国际汽车零部件博览会</td><td>2025-10-11 至 2025-10-13</td><td>武汉国际博览中心</td><td>-</td><td>汽车产业是我国的国民经济支柱产业,具有市场潜力大、关联度高、消费拉动大、规模效益明显、资金和技术密集的特点。汽车零部件行业是汽车工业的基石,支撑着全球数万亿美…</td><td>待核：名称和可见简介未命中</td></tr><tr><td>a866da0a3c1d047d</td><td>2025上海国际电力元件、可再生能源管理展览会</td><td>2025-09-24 至 2025-09-26</td><td>上海新国际博览中心</td><td>-</td><td>与德国纽伦堡每年一度的 PCIM Expo &amp; Conference一样,在中国,PCIM(电力转换与智能运动的英文缩写)也成为了一项综合性的展览活动,为来自…</td><td>待核：名称和可见简介未命中</td></tr></tbody></table></div></section>
+    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>代表性记录</h2><p class="biz-section-note">关键明细记录 Top N。</p></div><span class="biz-tag">Records</span></div><div class="table-wrap"><table><thead><tr><th>展会名称</th><th>展会日期</th><th>展馆</th><th>状态</th></tr></thead><tbody><tr><td>2026中国（杭州）国际半导体与集成电路产业创新博览会</td><td>2026-05-14 至 2026-05-16</td><td>杭州大会展中心</td><td>-</td></tr><tr><td>2026上海半导体展（SEMICON China）</td><td>2026-03-25</td><td>上海新国际博览中心</td><td>-</td></tr><tr><td>2026中国（上海）国际半导体设备、材料、制造和服务展览会</td><td>2026-03-25 至 2026-03-27</td><td>上海新国际博览中心</td><td>-</td></tr><tr><td>2025第八届深圳国际锂电池技术展览会</td><td>2025-11-24 至 2025-11-26</td><td>深圳会展中心</td><td>-</td></tr><tr><td>AUTO TECH 2025第十二届广州国际汽车技术展览会</td><td>2025-11-20 至 2025-11-22</td><td>广州保利世贸博览馆</td><td>-</td></tr><tr><td>2025电子半导体产业创新发展大会暨国际电子电路(大湾区)展览会</td><td>2025-10-29 至 2025-10-31</td><td>深圳国际会展中心(新馆)</td><td>-</td></tr><tr><td>2025湾区半导体产业生态博览会</td><td>2025-10-15</td><td>深圳会展中心</td><td>-</td></tr><tr><td>2025武汉国际汽车服务用品、美容养护汽车电子、改装、后市场博览会</td><td>2025-10-11 至 2025-10-13</td><td>武汉国际博览中心</td><td>-</td></tr><tr><td>2025中国(武汉)国际汽车零部件博览会</td><td>2025-10-11 至 2025-10-13</td><td>武汉国际博览中心</td><td>-</td></tr><tr><td>2025上海国际电力元件、可再生能源管理展览会</td><td>2025-09-24 至 2025-09-26</td><td>上海新国际博览中心</td><td>-</td></tr></tbody></table></div></section>
     <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>特征与洞察</h2><p class="biz-section-note">基于数据的结构化解读。</p></div><span class="biz-tag">Insights</span></div><div class="structural-feature-grid"><article class="structural-feature-card">
-  <h3>参展活跃度</h3>
-  <p class="structural-evidence">企业展会参与记录 255 条。</p>
-  <p>参展频度反映企业线下营销投入与行业曝光度；持续参展通常意味着稳定的渠道与品牌建设。</p>
-</article><article class="structural-feature-card">
-  <h3>参展展馆集中度</h3>
-  <p class="structural-evidence">“深圳会展中心”参展占比约 14%，前 3 展馆合计 43%（CR3）。</p>
-  <p>展馆布局多元；高集中度反映核心展会阵地清晰，多元分布说明跨场馆/跨城市拓展。</p>
-</article><article class="structural-feature-card">
-  <h3>参展年度趋势</h3>
-  <p class="structural-evidence">峰值出现在“2026”（7 次），近年上升 133%，同比 +133%。</p>
-  <p>参展频次上升反映线下营销加码或新业务推广；下降可能是预算收缩或转向线上。</p>
-</article><article class="structural-feature-card">
-  <h3>开展状态</h3>
-  <p class="structural-evidence">主要状态为“开放/即将开展”（10 / 10）。</p>
-  <p>开放/即将开展的展会占比高说明企业近期线下营销活跃；已结束为主则反映历史参展记录较多。</p>
+  <h3>展会查询返回</h3>
+  <p class="structural-evidence">上游报告展会查询总量 433 条。</p>
+  <p>该数值是上游关键词查询总量；不代表每条记录均与主题直接相关，也不据此推断区域或行业活跃度。</p>
 </article></div></section>
-    <section class="report-page biz-section"><div class="report-topbar"><div class="report-stripe"></div><div class="report-banner">展会大数据报告</div></div><div class="biz-section-head"><div><h2>名词解释</h2><p class="biz-section-note">报告中涉及的专业术语与统计指标说明。</p></div><span class="biz-tag">Glossary</span></div><div class="glossary-list"><div class="glossary-row"><span class="glossary-term">CR3</span><span class="glossary-def">行业集中度指标（Concentration Ratio 3），指排名前 3 的类别合计占总量的百分比。CR3 越高说明分布越集中，反之越分散。常用于衡量城市、品牌、产品类型等的集中程度。</span></div><div class="glossary-row"><span class="glossary-term">同比</span><span class="glossary-def">与上一年度同一时期对比的变化率。例如 2024 年同比增长率 = (2024 年值 - 2023 年值) / 2023 年值 * 100%。</span></div></div></section>
+    
   </main>
 </body>
 </html>

@@ -1,0 +1,50 @@
+[
+  {
+    "tool": "exhibition_bigdata_exhibition_participation",
+    "domain": null,
+    "arguments": {
+      "matchKeyword": "比亚迪股份有限公司",
+      "keywordType": "name",
+      "pageIndex": 1,
+      "pageSize": 8
+    },
+    "invocation_id": "1793069074633453000",
+    "elapsed_seconds": 0.916,
+    "status": "data",
+    "error_category": null,
+    "result_type": "dict",
+    "top_level_fields": [
+      "resultList",
+      "total"
+    ],
+    "row_count": 8,
+    "reported_total": 34,
+    "numeric_evidence": [
+      {
+        "path": "resultList[0].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[1].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[2].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[3].isOpen",
+        "value": 1
+      },
+      {
+        "path": "resultList[4].isOpen",
+        "value": 1
+      },
+      {
+        "path": "total",
+        "value": 34
+      }
+    ],
+    "response_sha256": "48c7ee6810511e4452bcbfdab51896ecce8b60f8f7a09b859a636d2aafc281c1"
+  }
+]

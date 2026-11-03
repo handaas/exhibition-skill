@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "skill": "exhibition-skill",
+  "case_id": "02-ev-participation",
+  "title": "车企参展布局",
+  "invocation_id": "1793069074633453000",
+  "provenance": {
+    "integrator_id": "683e574805537ace146cc05e",
+    "runner_sha256": "05777c2f2b0791cb5157aef691206606dade8df7af3b17212285b7ae74632a66",
+    "credential_policy_sha256": "bcabf08a1ca92f28357c0e57a8bae9bfa910eb1d4b204d8195ee3b7a77106eed",
+    "scenario_sha256": "c5488fc28471efc97e40b707b1030e1cead7b5f7b4c2136451d709c7565254a5",
+    "skill_source_hashes": {
+      "scripts/common.py": "583434f651cd2ab4837b183ad252d8e79b8e1cb6779aab84ff436b7a5484d554",
+      "scripts/compose_report.py": "671ac477c4c36f79df0418dd6eb7a02bc692010ea31a135b1619660c2cb0e018",
+      "scripts/mcp_client.py": "2d0a1d340a8ef519a71fcd3fc91720d8d381245205255b279ffc54bdca73d1e7",
+      "scripts/render_report.py": "2117301a604b15d34c5fe8428050be739d9f794147af1bf3843f6031d1c4e5f6",
+      "scripts/validate_config.py": "8813074460c064f7a6b92830b94ca99050c84e24f968c01d4cfb59b91fae26cb"
+    },
+    "upstream_source_hashes": {
+      "exhibition-mcp-server": "5114e5efd3b0245a9c6e34b2eb0f31d6fb305b00b1ccb7fd2d50e220d8584057"
+    },
+    "upstream_dependency_hashes": {
+      "exhibition-mcp-server/server/mcp_server.py": "5114e5efd3b0245a9c6e34b2eb0f31d6fb305b00b1ccb7fd2d50e220d8584057"
+    }
+  },
+  "source_changed_during_run": false,
+  "started_at": "2026-10-27T10:44:34+08:00",
+  "elapsed_seconds": 1.004,
+  "returncode": 0,
+  "exception_type": null,
+  "command": "python3 exhibition-skill/scripts/compose_report.py --enterprise '比亚迪股份有限公司' --page-size 8 --output exhibition-skill/output/live-replaced-20261027/02-ev-participation/report.json --report-output exhibition-skill/output/live-replaced-20261027/02-ev-participation/report.html",
+  "transport": "local MCP servers via loopback streamable-http",
+  "cache_used": false,
+  "call_count": 1,
+  "successful_data_calls": 1,
+  "empty_calls": 0,
+  "failed_calls": 0,
+  "checks": {
+    "issues": [],
+    "warnings": [],
+    "coverage_pct": 100,
+    "subject": {
+      "enterprise": "比亚迪股份有限公司",
+      "matchKeyword": "比亚迪股份有限公司",
+      "keywordType": "name",
+      "match_raw": "比亚迪股份有限公司",
+      "resolved": true,
+      "resolve_reason": "视为企业全称",
+      "search_mode": false,
+      "filters": {
+        "venue_region": null,
+        "fair_region": null,
+        "fair_industries": null,
+        "search_keyword": null
+      },
+      "query_scopes": {
+        "participation": "企业主体口径",
+        "venue": "未请求",
+        "exhibition": "未请求",
+        "exhibitor": "未请求"
+      }
+    },
+    "title": "比亚迪股份有限公司 展会大数据报告（企业参展）",
+    "data_mode": "enterprise",
+    "metrics": [
+      {
+        "label": "展会参与",
+        "value": "34",
+        "hint": "企业展会参与条数"
+      },
+      {
+        "label": "当前页参展展馆数",
+        "value": "2",
+        "hint": "仅基于当前页展示样本"
+      },
+      {
+        "label": "当前页展馆CR3",
+        "value": "100.0%",
+        "hint": "仅基于当前页展示样本，不能代表全量"
+      },
+      {
+        "label": "当前页活跃年份",
+        "value": "3",
+        "hint": "仅基于当前页展示样本"
+      },
+      {
+        "label": "当前页最新参展年份",
+        "value": "2025",
+        "hint": "仅基于当前页展示样本"
+      },
+      {
+        "label": "当前页参展峰值",
+        "value": "2024年 5次",
+        "hint": "仅基于当前页展示样本"
+      }
+    ],
+    "quality_report": {
+      "total_sections": 3,
+      "populated_sections": 3,
+      "empty_sections": 0,
+      "coverage_pct": 100
+    },
+    "unregistered_tools": [],
+    "checks": {
+      "json_html_markdown": true,
+      "explicit_live": true,
+      "tool_calls_recorded": 1,
+      "offline_scripts": true,
+      "independent_rerender": true,
+      "offline_browser": true
+    }
+  },
+  "status": "passed",
+  "source_hashes": {
+    "scripts/common.py": "583434f651cd2ab4837b183ad252d8e79b8e1cb6779aab84ff436b7a5484d554",
+    "scripts/compose_report.py": "671ac477c4c36f79df0418dd6eb7a02bc692010ea31a135b1619660c2cb0e018",
+    "scripts/mcp_client.py": "2d0a1d340a8ef519a71fcd3fc91720d8d381245205255b279ffc54bdca73d1e7",
+    "scripts/render_report.py": "2117301a604b15d34c5fe8428050be739d9f794147af1bf3843f6031d1c4e5f6",
+    "scripts/validate_config.py": "8813074460c064f7a6b92830b94ca99050c84e24f968c01d4cfb59b91fae26cb"
+  },
+  "technical_status": "passed",
+  "audited_at": "2026-10-27T11:12:59+08:00",
+  "evidence_binding": {
+    "report.json": "77c6c0fe1f6fcaad0fb8680099cfa7375819195a4ea268bd69c9ec4751abb0df",
+    "report.html": "2cd3744ffb76b304d4e6547be0b0e565de70bd42cf311f53a8914ae14900ce20",
+    "report.md": "ef6999d6427e81ce59d239f54ab82bc7b9608cafef0d8cdf4e308616dff29dc3",
+    "calls.json": "9c889dcc2fbdec1078954fb7cf83e3abf80c8b3adb9ffc761f92636062e98651",
+    "result.json": "f56f5c52bafa05eeb6750cafa5d16cc3ebb7278132fe92c7f8f8e221172151e0",
+    "source_manifest_sha256": "014e0c39ccd221d4b037bfafc75dc705b73521da54c003be18fa8ca62d4dab92"
+  }
+}

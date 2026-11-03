@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "skill": "exhibition-skill",
+  "case_id": "11-semiconductor-fair-landscape",
+  "title": "半导体行业展会机会池",
+  "invocation_id": "1793069076648780000",
+  "provenance": {
+    "integrator_id": "683e574805537ace146cc05e",
+    "runner_sha256": "05777c2f2b0791cb5157aef691206606dade8df7af3b17212285b7ae74632a66",
+    "credential_policy_sha256": "bcabf08a1ca92f28357c0e57a8bae9bfa910eb1d4b204d8195ee3b7a77106eed",
+    "scenario_sha256": "25527a4fcbde48addf232b0b3ae10741979fef3487a2a4b5b7b7eb1c33652eff",
+    "skill_source_hashes": {
+      "scripts/common.py": "583434f651cd2ab4837b183ad252d8e79b8e1cb6779aab84ff436b7a5484d554",
+      "scripts/compose_report.py": "671ac477c4c36f79df0418dd6eb7a02bc692010ea31a135b1619660c2cb0e018",
+      "scripts/mcp_client.py": "2d0a1d340a8ef519a71fcd3fc91720d8d381245205255b279ffc54bdca73d1e7",
+      "scripts/render_report.py": "2117301a604b15d34c5fe8428050be739d9f794147af1bf3843f6031d1c4e5f6",
+      "scripts/validate_config.py": "8813074460c064f7a6b92830b94ca99050c84e24f968c01d4cfb59b91fae26cb"
+    },
+    "upstream_source_hashes": {
+      "exhibition-mcp-server": "5114e5efd3b0245a9c6e34b2eb0f31d6fb305b00b1ccb7fd2d50e220d8584057"
+    },
+    "upstream_dependency_hashes": {
+      "exhibition-mcp-server/server/mcp_server.py": "5114e5efd3b0245a9c6e34b2eb0f31d6fb305b00b1ccb7fd2d50e220d8584057"
+    }
+  },
+  "source_changed_during_run": false,
+  "started_at": "2026-10-27T10:44:36+08:00",
+  "elapsed_seconds": 1.209,
+  "returncode": 0,
+  "exception_type": null,
+  "command": "python3 exhibition-skill/scripts/compose_report.py --search '半导体' --search-target exhibition --page-size 10 --output exhibition-skill/output/live-replaced-20261027/11-semiconductor-fair-landscape/report.json --report-output exhibition-skill/output/live-replaced-20261027/11-semiconductor-fair-landscape/report.html",
+  "transport": "local MCP servers via loopback streamable-http",
+  "cache_used": false,
+  "call_count": 1,
+  "successful_data_calls": 1,
+  "empty_calls": 0,
+  "failed_calls": 0,
+  "checks": {
+    "issues": [],
+    "warnings": [],
+    "coverage_pct": 100,
+    "subject": {
+      "enterprise": "",
+      "matchKeyword": "半导体",
+      "keywordType": "fairName",
+      "match_raw": "半导体",
+      "resolved": false,
+      "resolve_reason": "展会关键词无需解析企业主体",
+      "search_mode": true,
+      "mode": "fair_search",
+      "filters": {
+        "search_keyword": "半导体"
+      },
+      "query_scopes": {
+        "participation": "未请求",
+        "venue": "未请求",
+        "exhibition": "全国关键词口径",
+        "exhibitor": "未请求",
+        "fair_exhibitors": "未请求"
+      }
+    },
+    "title": "半导体 展会大数据报告（展会检索）",
+    "data_mode": "fair_search",
+    "metrics": [
+      {
+        "label": "展会",
+        "value": "433",
+        "hint": "展会查询命中数"
+      }
+    ],
+    "quality_report": {
+      "total_sections": 1,
+      "populated_sections": 1,
+      "empty_sections": 0,
+      "coverage_pct": 100
+    },
+    "unregistered_tools": [],
+    "checks": {
+      "json_html_markdown": true,
+      "explicit_live": true,
+      "tool_calls_recorded": 1,
+      "offline_scripts": true,
+      "independent_rerender": true,
+      "offline_browser": true
+    }
+  },
+  "status": "passed",
+  "source_hashes": {
+    "scripts/common.py": "583434f651cd2ab4837b183ad252d8e79b8e1cb6779aab84ff436b7a5484d554",
+    "scripts/compose_report.py": "671ac477c4c36f79df0418dd6eb7a02bc692010ea31a135b1619660c2cb0e018",
+    "scripts/mcp_client.py": "2d0a1d340a8ef519a71fcd3fc91720d8d381245205255b279ffc54bdca73d1e7",
+    "scripts/render_report.py": "2117301a604b15d34c5fe8428050be739d9f794147af1bf3843f6031d1c4e5f6",
+    "scripts/validate_config.py": "8813074460c064f7a6b92830b94ca99050c84e24f968c01d4cfb59b91fae26cb"
+  },
+  "technical_status": "passed",
+  "audited_at": "2026-10-27T11:12:59+08:00",
+  "evidence_binding": {
+    "report.json": "d32640e699e1968de82cf6f20c764fd285eeba0c4753b70a0d8408ccd5273ee6",
+    "report.html": "d21fd6cc5ad623f3d9da6f5a389238dae09eb6b9d8148498ed1b07b7f6825755",
+    "report.md": "df6e7be7c076ae9689270e3e22fbad1d07847f7eed15fb6e90a314235ba6a9af",
+    "calls.json": "60f057180f246920b79a31f09f7ec24b9535201908593ab435512541a10ae515",
+    "result.json": "36e6d6990af4802acd21761d6120d7bfa677f8367ba8bb6142489d3714550b2c",
+    "source_manifest_sha256": "014e0c39ccd221d4b037bfafc75dc705b73521da54c003be18fa8ca62d4dab92"
+  }
+}

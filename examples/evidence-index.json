@@ -1,0 +1,95 @@
+{
+  "run_id": "live-replaced-20261027",
+  "cases": [
+    {
+      "skill": "exhibition-skill",
+      "id": "01-enterprise-participation",
+      "status": "passed",
+      "positive_business_pass": true,
+      "files_sha256": {
+        "report.json": "aae00b938d19c834e3c2e7905658d6d7a4cd1bd15f21908eabb7a739d51caabf",
+        "report.html": "fb3f6b6df0b82fe2d6ad95cabc76a82d5fea233f44ab431219b6fb6c572563c0",
+        "report.md": "7ac755667340ae650082b04491dfafd2f566210632a05bdacfbb994407d1d3ab",
+        "calls.json": "4d83c98d81656c09631c73c0fd4208bfa813c708eb8399f0e8d12a25abd9a33d",
+        "result.json": "af53a08902e893cb3d772df1dc10e2b0a3d1f383dd5c9497d930ef3d0b91f470",
+        "audit.json": "215b65cc5ac95bb098cc346e455af7bb49db6197e8576f129401e399e63d4088",
+        "acceptance.json": "71daaeb783ea645fac62a897929df05e42d50c660d70515cb199df3837f1b749",
+        "business-review.json": "d4f13a261896fe2e57bc832720019f3e7b50bbb073faa2645ded2a7b86fa2a69",
+        "browser-check.json": "f7d87c05a30ad77a554677466ac2eb4300c24e4ab3673a1c7545675a20664b02"
+      },
+      "audit_record": "../../test-records/live-replaced-20261027/01-enterprise-participation.md"
+    },
+    {
+      "skill": "exhibition-skill",
+      "id": "02-ev-participation",
+      "status": "passed",
+      "positive_business_pass": true,
+      "files_sha256": {
+        "report.json": "77c6c0fe1f6fcaad0fb8680099cfa7375819195a4ea268bd69c9ec4751abb0df",
+        "report.html": "2cd3744ffb76b304d4e6547be0b0e565de70bd42cf311f53a8914ae14900ce20",
+        "report.md": "ef6999d6427e81ce59d239f54ab82bc7b9608cafef0d8cdf4e308616dff29dc3",
+        "calls.json": "9c889dcc2fbdec1078954fb7cf83e3abf80c8b3adb9ffc761f92636062e98651",
+        "result.json": "f56f5c52bafa05eeb6750cafa5d16cc3ebb7278132fe92c7f8f8e221172151e0",
+        "audit.json": "26254951e05f1d4fc7c3030d460266b8ccf08182b77169d3a2401c7277414e0f",
+        "acceptance.json": "10009989389699f553b14f34b5d8b51e825580509eed5fae446e457a0e1b46cb",
+        "business-review.json": "cbfb9603b32572f635e7097b3feec3acb6962dcfeb9635bb53b42da6b47403a2",
+        "browser-check.json": "40636fc43f00976122a295976aa282ed276cd41b69a1d9b36fa6f4017915b170"
+      },
+      "audit_record": "../../test-records/live-replaced-20261027/02-ev-participation.md"
+    },
+    {
+      "skill": "exhibition-skill",
+      "id": "09-template-enterprise-participation",
+      "status": "passed",
+      "positive_business_pass": true,
+      "files_sha256": {
+        "report.json": "e5a579d2ba5cedc5b73ec3dac68a2fc6af196e4abb7a2b7a2cbe776e1683b136",
+        "report.html": "332d7481fb8d7fe562063dbe391b40bf31bd21781f57a55d940b95743db5527b",
+        "report.md": "1d5b8944cfeab4af75b9b37ba7a95a4abdf869fea59a96a3ac795159d8a18684",
+        "calls.json": "f141eea63897da0fc65f6eddc2e5bbaa2569a158bfee3dec8efe3605305770ab",
+        "result.json": "e8f0f69ee503ad8e4c3e728a36af3463b3b763d2e1415d4ce125d97638d4918c",
+        "audit.json": "951ccdeb36ffe5d707c3ac7c50861e13658a483e7d74bca1241e7f038f16d52e",
+        "acceptance.json": "b4637d2678dd78d0ebbabe0e9ca3b42888f12fface86f3125f787a6fc1cd0189",
+        "business-review.json": "29c033815fb2d8707f39966f6f69bc9f9c5889111b3df95ff18f78091c2da9e0",
+        "browser-check.json": "6a43adccedf75c24835186dc0a9d4ad39fd29ea1871dc5916aeeb0ce62b24a04"
+      },
+      "audit_record": "../../test-records/live-replaced-20261027/09-template-enterprise-participation.md"
+    },
+    {
+      "skill": "exhibition-skill",
+      "id": "10-exact-cable-fair-discovery",
+      "status": "passed",
+      "positive_business_pass": true,
+      "files_sha256": {
+        "report.json": "92fdd32dc4b7c85f5184c3a4a74c57ded34973688db3bad8e92a8cb66b548d2f",
+        "report.html": "385bfb021334c55a129a5f020e7d0c42853690e17905df44c36439678729138b",
+        "report.md": "3125f231bbba09652467025d678cf6cfd695369a823b818d055e77df8e3afba5",
+        "calls.json": "472342a7fe685baa42ddf577c0b14e2b4ec5f4e50c54a22765ba9654c2128be2",
+        "result.json": "23ff2158c9c265d21e8fda2796d03ecf1072961f09cc78469f9abbfdc437e2b1",
+        "audit.json": "fa77432bef95f9ed6bba481a43b6bc79d07a954a1c2417369fe8f445db8ccd41",
+        "acceptance.json": "074b32f7911405603ad353a1ec45917c41a84f428c99ab7bbfe5f2bda7ae5a45",
+        "business-review.json": "63c275e9e2d9717e04c4336501c78d629b3c2a57dcb93ea68b040d3ee17ceda9",
+        "browser-check.json": "fa81d16dea7bcfefa8444313247750308e4ec8ab4f38ed0177ff1b860c95114e"
+      },
+      "audit_record": "../../test-records/live-replaced-20261027/10-exact-cable-fair-discovery.md"
+    },
+    {
+      "skill": "exhibition-skill",
+      "id": "11-semiconductor-fair-landscape",
+      "status": "passed",
+      "positive_business_pass": true,
+      "files_sha256": {
+        "report.json": "d32640e699e1968de82cf6f20c764fd285eeba0c4753b70a0d8408ccd5273ee6",
+        "report.html": "d21fd6cc5ad623f3d9da6f5a389238dae09eb6b9d8148498ed1b07b7f6825755",
+        "report.md": "df6e7be7c076ae9689270e3e22fbad1d07847f7eed15fb6e90a314235ba6a9af",
+        "calls.json": "60f057180f246920b79a31f09f7ec24b9535201908593ab435512541a10ae515",
+        "result.json": "36e6d6990af4802acd21761d6120d7bfa677f8367ba8bb6142489d3714550b2c",
+        "audit.json": "b2f5373fd7995b4ecf534ff0cfffade4ba3e83141f3510e4aec4f905b7ff7b39",
+        "acceptance.json": "6ca1bdfbbaf0235dde03852bb66b8a1849cb36b30415653e8915cf9e639d0e7d",
+        "business-review.json": "4c972d8ee211fecba387dd8eef07099befdc125124068680a4b533f818f82ff3",
+        "browser-check.json": "2b80b0ff733cbb99b4a3990855f72a3b00b5960b7ef1d2ecbf62e99064c18090"
+      },
+      "audit_record": "../../test-records/live-replaced-20261027/11-semiconductor-fair-landscape.md"
+    }
+  ]
+}
