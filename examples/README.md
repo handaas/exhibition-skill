@@ -2,7 +2,7 @@
 
 本目录只展示 **5 个完全通过的真实正向场景**（最低要求4例）。
 
-每例均为真实、非空、非缓存调用；技术检查、独立业务检查和离线浏览器检查全部通过。报告保持原实测字节，不把空数据、报错处理或仅生成页面计作通过。
+每例均为真实、非空、非缓存调用；技术检查、独立业务检查和离线浏览器检查全部通过。不把空数据、报错处理或仅生成页面计作通过。历史验收记录保留在本地 test-records/；本目录的 HTML/Markdown 由原 JSON 重渲染，不代表重新查询或重新验收。
 
 | 场景 | 真实使用需求 | 报告 |
 |---|---|---|
@@ -13,5 +13,5 @@
 | [半导体行业展会机会池](11-semiconductor-fair-landscape/README.md) | 请检索多个不同的半导体相关展会，要求相关性能够从实际返回的展会名称或简介中看出；列出展会名称，并按实际可用字段补充举办时间或展馆，形成招商团队可比较的行业机会池；本次不查询展商。 | [HTML](11-semiconductor-fair-landscape/report.html) / [MD](11-semiconductor-fair-landscape/report.md) / [JSON](11-semiconductor-fair-landscape/report.json) |
 
 - [逐例验收结果](results.json) · [业务复核](review.json) · [证据摘要](evidence-index.json)
-- [完整测试记录](../test-records/live-replaced-20261027/README.md)仅用于审计，不属于可展示示例。
+- 完整测试记录仅存于本地 test-records/live-replaced-20261027/（仅本地审计用，不随本目录发布），不属于可展示示例。
 - 当前数据与结论限于原查询时点及公开样本；覆盖率不代表准确率或低风险。
