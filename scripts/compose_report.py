@@ -22,9 +22,12 @@ This file never prints secrets; MCP credentials live in the server's own .env.
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
+import html as _html
 import json
 import pathlib
+import re as _re
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from common import REPORT_BANNER, REPORT_TYPE, attach_pagination, call_tool_once, collect_detail_pages, json_dumps, load_json_file, paid_call_scope, print_json
@@ -239,25 +242,27 @@ def _derive_core_metrics(metrics: List[Dict[str, Any]], core: Mapping[str, Any])
     pav_dist = core.get("pavilion_dist", []) if isinstance(core, dict) else []
     year_trend = core.get("year_trend", []) if isinstance(core, dict) else []
     if isinstance(pav_dist, list) and pav_dist:
-        metrics.append({"label": "本次采集参展展馆数", "value": str(len(pav_dist)), "hint": "仅基于本次采集展示样本"})
+        metrics.append({"label": "展示样本参展展馆数", "value": str(len(pav_dist)), "hint": "仅基于本次展示样本，不是全量"})
         try:
             nums = [int(r.get("参展次数", 0)) for r in pav_dist if r.get("参展次数")]
             total = sum(nums)
             if total > 0:
                 top3 = sum(sorted(nums, reverse=True)[:3])
-                metrics.append({"label": "本次采集展馆CR3", "value": f"{top3/total*100:.1f}%", "hint": "仅基于本次采集展示样本，不能代表全量"})
+                metrics.append({"label": "展示样本展馆CR3", "value": f"{top3/total*100:.1f}%", "hint": "仅基于本次展示样本，不能代表全量"})
         except (ValueError, TypeError):
             pass
     if isinstance(year_trend, list) and year_trend:
-        metrics.append({"label": "本次采集活跃年份", "value": str(len(year_trend)), "hint": "仅基于本次采集展示样本"})
+        metrics.append({"label": "展示样本活跃年份数", "value": str(len(year_trend)), "hint": "仅基于本次展示样本"})
         try:
             years = sorted([str(r.get("年份", "")) for r in year_trend if r.get("年份")], reverse=True)
             if years:
-                metrics.append({"label": "本次采集最新参展年份", "value": years[0], "hint": "仅基于本次采集展示样本"})
+                metrics.append({"label": "展示样本最新参展年份", "value": years[0], "hint": "仅基于本次展示样本"})
             peak_rows = [(str(r.get("年份", "")), int(r.get("参展次数", 0))) for r in year_trend if r.get("参展次数")]
             if peak_rows:
-                peak = max(peak_rows, key=lambda x: x[1])
-                metrics.append({"label": "本次采集参展峰值", "value": f"{peak[0]}年 {peak[1]}次", "hint": "仅基于本次采集展示样本"})
+                peak_value = max(v for _, v in peak_rows)
+                peak_years = [y for y, v in peak_rows if v == peak_value]
+                label = "、".join(f"{y}年" for y in peak_years)
+                metrics.append({"label": "展示样本参展峰值", "value": f"{label} 各{peak_value}次" if len(peak_years) > 1 else f"{label} {peak_value}次", "hint": "仅基于本次展示样本；并列峰值逐项列出"})
         except (ValueError, TypeError):
             pass
     return metrics
@@ -337,21 +342,34 @@ def _fair_date_range(item: Mapping[str, Any]) -> str:
     return begin or end or "-"
 
 
+def _plain_text(value: Any, limit: int = 0) -> str:
+    """Strip HTML tags/entities from an upstream description and collapse space."""
+    raw = _text(value)
+    if not raw:
+        return ""
+    raw = _re.sub(r"<[^>]+>", " ", raw)
+    raw = _html.unescape(raw)
+    raw = " ".join(raw.split())
+    if limit and len(raw) > limit:
+        return raw[: limit - 1].rstrip() + "…"
+    return raw
+
+
 def _fair_status(item: Mapping[str, Any]) -> str:
-    """Render isOpen as an upstream flag without inferring event timing."""
+    """Render isOpen as an upstream flag without pretending it is an event status."""
     v = item.get("isOpen")
     if v is None:
         return "-"
     try:
-        return f"上游开放标记={int(v)}"
+        return f"{int(v)}（上游开放标记，未说明含义）"
     except (TypeError, ValueError):
-        return f"上游开放标记={_text(v)}"
+        return f"{_text(v)}（上游开放标记，未说明含义）"
 
 
 def _participation_rows(payload: Any, search_keyword: Optional[str] = None) -> List[Dict[str, Any]]:
     """participation/exhibition share fields: fairName/fairBeginTime/fairEndTime/
-    fairPavilion/fairDesc/isOpen. We render date range, venue, status, and a
-    highlight (fairDesc, truncated)."""
+    fairPavilion/fairDesc/isOpen. We render date range, venue, upstream flag, and
+    a plain-text highlight (fairDesc, truncated)."""
     rows: List[Dict[str, Any]] = []
     for item in _first_list(payload):
         if not isinstance(item, dict):
@@ -361,8 +379,8 @@ def _participation_rows(payload: Any, search_keyword: Optional[str] = None) -> L
             "展会名称": _text(item.get("fairName")) or "-",
             "展会日期": _fair_date_range(item),
             "展馆": _text(item.get("fairPavilion")) or "-",
-            "状态": _fair_status(item),
-            "展会亮点": _text(item.get("fairDesc"), limit=80) or "-",
+            "上游开放标记": _fair_status(item),
+            "展会亮点": _plain_text(item.get("fairDesc"), limit=120) or "-",
         }
         if search_keyword:
             keyword = "".join(search_keyword.casefold().split())
@@ -430,7 +448,7 @@ def build_core_analysis(
 
     sections: List[Dict[str, Any]] = []
     if participation_rows or participation_total is not None:
-        sections.append({"key": "participation", "title": "展会参与", "kind": "table", "note": (f"上游总量 {participation_total} 条；本次采集展示 {len(participation_rows)} 条" if participation_total is not None else f"本次采集展示 {len(participation_rows)} 条；上游未返回总量"), "columns": [("展会名称", "展会名称"), ("展会日期", "展会日期"), ("展馆", "展馆"), ("状态", "状态"), ("展会亮点", "展会亮点")]})
+        sections.append({"key": "participation", "title": "展会参与", "kind": "table", "note": (f"上游总量 {participation_total} 条；本次采集展示 {len(participation_rows)} 条" if participation_total is not None else f"本次采集展示 {len(participation_rows)} 条；上游未返回总量"), "columns": [("展会名称", "展会名称"), ("展会日期", "展会日期"), ("展馆", "展馆"), ("上游开放标记", "上游开放标记"), ("展会亮点", "展会亮点")]})
     if pavilion_dist_rows:
         sections.append({"key": "pavilion_dist", "title": "参展展馆分布", "kind": "bar", "note": "仅按本次采集展示样本聚合，不代表上游全量分布", "chart": {"name": "展馆", "value": "参展次数", "orient": "h"}, "columns": [("展馆", "展馆"), ("参展次数", "参展次数")]})
     if year_trend_rows:
@@ -439,7 +457,7 @@ def build_core_analysis(
         sections.append({"key": "venue", "title": "展馆查询", "kind": "table", "note": (f"上游总量 {venue_total} 条；本次采集展示 {len(venue_rows)} 条" if venue_total is not None else f"本次采集展示 {len(venue_rows)} 条；上游未返回总量"), "columns": [("展馆名称", "展馆名称"), ("所在区域", "所在区域"), ("地址", "地址"), ("展馆面积", "展馆面积"), ("展厅数量", "展厅数量")]})
     if exhibition_rows or exhibition_total is not None:
         exhibition_note = (f"上游总量 {exhibition_total} 条；本次采集展示 {len(exhibition_rows)} 条" if exhibition_total is not None else f"本次采集展示 {len(exhibition_rows)} 条；上游未返回总量")
-        exhibition_columns = [("展会ID", "展会ID"), ("展会名称", "展会名称"), ("展会日期", "展会日期"), ("展馆", "展馆"), ("状态", "状态"), ("展会亮点", "展会亮点")]
+        exhibition_columns = [("展会ID", "展会ID"), ("展会名称", "展会名称"), ("展会日期", "展会日期"), ("展馆", "展馆"), ("上游开放标记", "上游开放标记"), ("展会亮点", "展会亮点")]
         if search_keyword:
             related = sum(1 for row in exhibition_rows if row.get("关键词相关性") in {"名称命中", "简介命中"})
             exhibition_note += f"；可见字段直接命中关键词 {related} 条，其他记录保留并标为待核"
@@ -498,7 +516,7 @@ def build_records(core: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "展会名称": item.get("展会名称") or "-",
                 "展会日期": item.get("展会日期") or "-",
                 "展馆": item.get("展馆") or "-",
-                "状态": item.get("状态") or "-",
+                "上游开放标记": item.get("上游开放标记") or "-",
             })
     if not rows and core.get("fair_exhibitors"):
         for item in core.get("fair_exhibitors") or []:
@@ -512,7 +530,7 @@ def build_records(core: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "展会名称": item.get("展会名称") or "-",
                 "展会日期": item.get("展会日期") or "-",
                 "展馆": item.get("展馆") or "-",
-                "状态": item.get("状态") or "-",
+                "上游开放标记": item.get("上游开放标记") or "-",
             })
     if not rows and core.get("exhibitor"):
         for item in core.get("exhibitor") or []:
@@ -522,6 +540,25 @@ def build_records(core: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "所属行业": item.get("所属行业") or "-",
             })
     return rows[:20]
+
+
+def _fair_brand_key(name: Any) -> str:
+    """Normalise a fair name for textual grouping only (year/届次 removed)."""
+    text = _text(name)
+    text = _re.sub(r"^(19|20)\d{2}", "", text)
+    text = _re.sub(r"^第[0-9一二三四五六七八九十百]+届", "", text)
+    text = _re.sub(r"[（(][^）)]*[）)]", "", text)
+    text = _re.sub(r"[\s\-—_·,，、:：\"'“”‘’]", "", text)
+    return text.casefold()
+
+
+def _fair_brand_groups(rows: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
+    groups: Dict[str, int] = {}
+    for row in rows:
+        key = _fair_brand_key(row.get("展会名称"))
+        if key:
+            groups[key] = groups.get(key, 0) + 1
+    return groups
 
 
 def _concentration_rows(rows: Sequence[Mapping[str, Any]], name_key: str, value_key: str, top_n: int = 3) -> Dict[str, Any]:
@@ -540,32 +577,61 @@ def _concentration_rows(rows: Sequence[Mapping[str, Any]], name_key: str, value_
     return {"top": items[0][0], "top_share": items[0][1] / total * 100, "cr": cr, "total": total, "count": len(items)}
 
 
-def _year_trend_analysis(rows: List[Mapping[str, Any]]) -> Dict[str, Any]:
-    """Direction/peak/YoY for参展次数 year series."""
-    nums = []
+def _year_trend_analysis(rows: List[Mapping[str, Any]], as_of_year: Optional[int] = None) -> Dict[str, Any]:
+    """Direction/peak for a year series, with sparse/gap/partial-year guards."""
+    series = []
     for r in rows:
         try:
-            nums.append(float(str(r.get("参展次数", 0)).replace(",", "")))
+            year = int(str(r.get("年份", "")).strip()[:4])
+            value = float(str(r.get("参展次数", 0)).replace(",", ""))
         except (TypeError, ValueError):
-            nums.append(0.0)
-    if not nums:
+            continue
+        series.append((year, value))
+    if not series:
         return {}
-    peak_idx = max(range(len(nums)), key=lambda i: nums[i])
-    direction = "持平"
+    series.sort(key=lambda x: x[0])
+    nums = [v for _, v in series]
+    peak = max(nums)
+    peak_years = [str(y) for y, v in series if v == peak]
+    latest_year = series[-1][0]
+    partial_year = latest_year if as_of_year is not None and latest_year == as_of_year else None
+    complete = [(y, v) for y, v in series if y != partial_year]
+    comparable = False
+    reason = ""
     yoy = ""
-    if len(nums) >= 2:
-        last, prev = nums[-1], nums[-2]
-        if prev > 0:
+    direction = "持平"
+    if len(complete) >= 2:
+        (prev_year, prev), (last_year, last) = complete[-2], complete[-1]
+        if last_year - prev_year != 1:
+            reason = f"样本年度不连续（{prev_year}→{last_year}），不计算同比"
+        elif prev < 2 or last < 2:
+            reason = f"相邻两年样本均不足 2 条（{last_year}={last:.0f}，{prev_year}={prev:.0f}），不计算同比"
+        elif prev > 0:
+            comparable = True
             pct = (last - prev) / prev * 100
             if pct > 5:
                 direction = f"上升 {pct:.0f}%"
             elif pct < -5:
                 direction = f"下降 {abs(pct):.0f}%"
-            yoy = f"同比 {pct:+.0f}%"
-    return {"peak_period": rows[peak_idx].get("年份", "-"), "peak_value": nums[peak_idx], "direction": direction, "yoy": yoy, "last": nums[-1]}
+            yoy = f"{last_year} 年较 {prev_year} 年{direction}（{last:.0f} vs {prev:.0f}）"
+    else:
+        reason = "剔除不完整年度后可用年度不足 2 个，不计算同比"
+    return {
+        "peak_period": "、".join(peak_years),
+        "peak_value": peak,
+        "peak_years": peak_years,
+        "direction": direction,
+        "yoy": yoy,
+        "comparable": comparable,
+        "reason": reason,
+        "partial_year": partial_year,
+        "partial_value": next((v for y, v in series if y == partial_year), None),
+        "last": nums[-1],
+        "years": len(series),
+    }
 
 
-def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: Sequence[Mapping[str, Any]], as_of_year: Optional[int] = None) -> List[Dict[str, Any]]:
     insights: List[Dict[str, Any]] = []
     metric_map = {m["label"]: str(m["value"]) for m in metrics}
 
@@ -579,6 +645,23 @@ def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics:
                 "feature": "展会查询返回",
                 "evidence": f"上游报告展会查询总量 {exhibition_total} 条。",
                 "interpretation": "该数值是上游关键词查询总量；不代表每条记录均与主题直接相关，也不据此推断区域或行业活跃度。",
+            })
+        exh_rows = core.get("exhibition") or []
+        if exh_rows:
+            hit_n = sum(1 for r in exh_rows if r.get("关键词相关性") in ("名称命中", "简介命中"))
+            pending_n = len(exh_rows) - hit_n
+            groups = _fair_brand_groups(exh_rows)
+            multi = {k: v for k, v in groups.items() if v > 1}
+            evidence = f"本次展示 {len(exh_rows)} 条；可见名称/简介直接含关键词 {hit_n} 条，待核 {pending_n} 条"
+            if groups:
+                evidence += f"；按名称去除年份与届次后归为 {len(groups)} 组，其中 {len(multi)} 组含多条记录"
+                if multi:
+                    top_group = max(multi.items(), key=lambda kv: kv[1])
+                    evidence += f"（最多一组 {top_group[1]} 条）"
+            insights.append({
+                "feature": "检索记录与展会品牌",
+                "evidence": evidence + "。",
+                "interpretation": "同一展会的不同届次会作为多条记录返回；记录数不等于展会品牌数或届次数，归组仅为文本相似，是否同一主办方需核对官方信息。",
             })
         if exhibitor_total:
             insights.append({
@@ -634,25 +717,37 @@ def build_insights(subject: Mapping[str, Any], core: Mapping[str, Any], metrics:
         # 年度趋势
         year_trend = core.get("year_trend") or []
         if year_trend:
-            ta = _year_trend_analysis(year_trend)
+            ta = _year_trend_analysis(year_trend, as_of_year=as_of_year)
             if ta:
+                peak_text = f"本次展示样本峰值出现在“{ta['peak_period']}”（{ta['peak_value']:.0f} 次）"
+                if len(ta.get("peak_years") or []) > 1:
+                    peak_text = f"本次展示样本峰值年度为 {'、'.join(ta['peak_years'])}（各 {ta['peak_value']:.0f} 次）"
+                parts = [peak_text]
+                if ta.get("yoy"):
+                    parts.append(ta["yoy"])
+                    if ta.get("partial_year"):
+                        parts.append(f"{ta['partial_year']} 年为不完整年度（{ta.get('partial_value') or 0:.0f} 次，截至报告生成日），不纳入同比")
+                elif ta.get("partial_year"):
+                    parts.append(f"{ta['partial_year']} 年为不完整年度（{ta.get('partial_value') or 0:.0f} 次，截至报告生成日），剔除后可用完整年度不足 2 个，未计算同比")
+                elif ta.get("reason"):
+                    parts.append(ta["reason"])
                 insights.append({
                     "feature": "参展年度趋势",
-                    "evidence": f"本次采集样本峰值出现在“{ta['peak_period']}”（{ta['peak_value']:.0f} 次），样本内{ta['direction']}，{ta.get('yoy', '')}。",
-                    "interpretation": "本次采集样本不足以证明企业全量参展趋势，不据此推断营销预算变化。",
+                    "evidence": "；".join(parts) + "。",
+                    "interpretation": "本次展示样本不足以证明企业全量参展趋势；年度不连续或样本过少时，不做同比与预算推断。",
                 })
         # 开展状态分布
         if participation:
             status_counts: Dict[str, int] = {}
             for r in participation:
-                v = r.get("状态")
+                v = r.get("上游开放标记")
                 if v and v != "-":
                     status_counts[v] = status_counts.get(v, 0) + 1
             if status_counts:
                 top_status = sorted(status_counts.items(), key=lambda kv: kv[1], reverse=True)[0]
                 insights.append({
                     "feature": "上游开放标记",
-                    "evidence": f"主要状态为“{top_status[0]}”（{top_status[1]} / {len(participation)}）。",
+                    "evidence": f"主要标记为“{top_status[0]}”（{top_status[1]} / {len(participation)}）。",
                     "interpretation": "该字段仅原样呈现上游开放标记，不用于推断当前时间状态；应以实际起止日期另行核验。",
                 })
     if not insights:
@@ -734,32 +829,41 @@ def build_dry_run_payload(raw: str, keyword_type: str) -> Dict[str, Any]:
     subject = {**subject, "match_raw": raw, "keywordType": keyword_type}
     core = sample.get("core_analysis") or {}
     metrics = sample.get("metrics") or []
-    return _assemble(subject, core, metrics, dry_run=True, search_mode=bool(subject.get("search_mode")))
+    return apply_content_review(_assemble(subject, core, metrics, dry_run=True, search_mode=bool(subject.get("search_mode"))))
 
 
 # --------------------------------------------------------------------------- #
 # Assembly
 # --------------------------------------------------------------------------- #
 
+def _quality_report(core: Mapping[str, Any]) -> Dict[str, Any]:
+    """Section-fill rate from final declared sections and their actual bodies.
+
+    ``0`` is a populated body; None/''/[]/{} is empty. Not an accuracy score.
+    """
+    ca = core if isinstance(core, dict) else {}
+    sections = ca.get("sections")
+    if isinstance(sections, list):
+        total = len(sections)
+        populated = sum(1 for s in sections if isinstance(s, dict) and ca.get(s.get("key")) not in (None, "", [], {}))
+    else:
+        keys = [k for k in ca if k not in ("sections", "source_status")]
+        total = len(keys)
+        populated = sum(1 for k in keys if ca.get(k) not in (None, "", [], {}))
+    return {
+        "total_sections": total,
+        "populated_sections": populated,
+        "empty_sections": total - populated,
+        "coverage_pct": round(populated / max(1, total) * 100),
+    }
+
+
 def _assemble(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: Sequence[Mapping[str, Any]], *, dry_run: bool, search_mode: bool = False, tool_errors: Optional[List[str]] = None) -> Dict[str, Any]:
     abstract = build_abstract(subject, core, metrics)
     records = build_records(core)
-    insights = build_insights(subject, core, metrics)
-    # Quality gate: count populated core-analysis sections.
-    ca = core if isinstance(core, dict) else {}
-    secs = ca.get("sections", [])
-    if secs:
-        total_secs = len(secs)
-        populated = sum(1 for s in secs if isinstance(s, dict) and ca.get(s.get("key")) not in (None, "", [], {}))
-    else:
-        total_secs = max(1, len([k for k in ca if k != "sections"]))
-        populated = sum(1 for k in ca if k != "sections" and ca.get(k) not in (None, "", [], {}))
-    quality_report = {
-        "total_sections": total_secs,
-        "populated_sections": populated,
-        "empty_sections": total_secs - populated,
-        "coverage_pct": round(populated / max(1, total_secs) * 100),
-    }
+    insights = build_insights(subject, core, metrics, as_of_year=dt.datetime.now().year)
+    quality_report = _quality_report(core)
+    populated = quality_report["populated_sections"]
     if subject.get("blocked_reason"):
         abstract = f"查询受阻：{subject.get('blocked_reason')}。已保留成功取得的检索结果，但未完成受阻维度，不据此生成该维度业务结论。"
     elif populated == 0:
@@ -810,6 +914,179 @@ def _assemble(subject: Mapping[str, Any], core: Mapping[str, Any], metrics: Sequ
     }
 
 
+_REVIEW_METRIC_LABELS = {
+    "当前页参展展馆数": "展示样本参展展馆数",
+    "本次采集参展展馆数": "展示样本参展展馆数",
+    "当前页展馆CR3": "展示样本展馆CR3",
+    "本次采集展馆CR3": "展示样本展馆CR3",
+    "当前页活跃年份": "展示样本活跃年份数",
+    "本次采集活跃年份": "展示样本活跃年份数",
+    "当前页最新参展年份": "展示样本最新参展年份",
+    "本次采集最新参展年份": "展示样本最新参展年份",
+    "当前页参展峰值": "展示样本参展峰值",
+    "本次采集参展峰值": "展示样本参展峰值",
+}
+
+
+def _review_participation_rows(rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    """Normalise old rows: flag is not an event status; strip HTML from snippets."""
+    out: List[Dict[str, Any]] = []
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        row = dict(raw)
+        if "状态" in row and "上游开放标记" not in row:
+            value = _text(row.pop("状态"))
+            if value.startswith("上游开放标记="):
+                value = value.split("=", 1)[1]
+            row["上游开放标记"] = f"{value}（上游开放标记，未说明含义）" if value and value != "-" else "-"
+        if row.get("展会亮点") and row.get("展会亮点") != "-":
+            row["展会亮点"] = _plain_text(row.get("展会亮点")) or "-"
+        out.append(row)
+    return out
+
+
+def _review_core_rows(core: Mapping[str, Any], keyword: str) -> Dict[str, Any]:
+    out = dict(core)
+    for key in ("participation", "exhibition"):
+        if isinstance(out.get(key), list):
+            out[key] = _review_participation_rows(out[key])
+    token = "".join(str(keyword or "").casefold().split())
+    if token and isinstance(out.get("exhibition"), list):
+        for row in out["exhibition"]:
+            if "关键词相关性" in row:
+                continue
+            name = "".join(str(row.get("展会名称") or "").casefold().split())
+            desc = "".join(str(row.get("展会亮点") or "").casefold().split())
+            if token in name:
+                row["关键词相关性"] = "名称命中"
+            elif token in desc:
+                row["关键词相关性"] = "简介命中"
+            else:
+                row["关键词相关性"] = "待核：名称和可见简介未命中"
+    sections = []
+    for spec in out.get("sections") or []:
+        if isinstance(spec, dict):
+            spec = dict(spec)
+            columns = []
+            for col in spec.get("columns") or []:
+                if isinstance(col, (list, tuple)) and len(col) == 2 and col[0] == "状态":
+                    columns.append(("上游开放标记", "上游开放标记"))
+                else:
+                    columns.append(col)
+            spec["columns"] = columns
+        sections.append(spec)
+    out["sections"] = sections
+    return out
+
+
+def _review_metrics(metrics: Sequence[Mapping[str, Any]], core: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    peak_rows = [(str(r.get("年份")), int(r.get("参展次数", 0))) for r in (core.get("year_trend") or [])
+                 if r.get("年份") and str(r.get("参展次数", "")).isdigit()]
+    for raw in metrics:
+        if not isinstance(raw, dict):
+            continue
+        metric = dict(raw)
+        label = _REVIEW_METRIC_LABELS.get(str(metric.get("label") or ""), str(metric.get("label") or ""))
+        metric["label"] = label
+        if label.startswith("展示样本"):
+            metric["hint"] = "仅基于本次展示样本，不是全量"
+        if label == "展示样本参展峰值" and peak_rows:
+            top = max(v for _, v in peak_rows)
+            years = [y for y, v in peak_rows if v == top]
+            label_text = "、".join(f"{y}年" for y in years)
+            metric["value"] = f"{label_text} 各{top}次" if len(years) > 1 else f"{label_text} {top}次"
+            metric["hint"] = "仅基于本次展示样本；并列峰值逐项列出"
+        if label in seen:
+            continue
+        seen.add(label)
+        out.append(metric)
+    return out
+
+
+def apply_content_review(report: Mapping[str, Any], *, source_sha256: Optional[str] = None,
+                         reviewed_at: Optional[str] = None) -> Dict[str, Any]:
+    """Rebuild exhibition narrative content offline from an existing payload.
+
+    Uses only fields already present (participation/exhibition rows, year trend,
+    metrics, subject, generated_at). No MCP call, no new facts. Fixes:
+    * an upstream open flag rendered as event "状态";
+    * HTML tags and mid-token truncation in fair highlights;
+    * year-over-year claims across non-adjacent/one-record years or including
+      the current partial year;
+    * peak-year ties silently picking one year;
+    * "当前页" sample metrics not naming their scope.
+    """
+    out = copy.deepcopy(dict(report))
+    subject = dict(out.get("subject") or {})
+    ds = dict(out.get("data_source") or {})
+    if subject.get("blocked_reason") or ds.get("blocked_reason"):
+        ds["quality_report"] = _quality_report(out.get("core_analysis") or {})
+        ds["content_revision"] = {
+            "mode": "offline_source_preserving",
+            "source_sha256": source_sha256,
+            "original_generated_at": ds.get("generated_at"),
+            "reviewed_at": reviewed_at or dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+            "scope": "受阻报告：保留原阻断说明与空结果边界，不重算业务结论",
+        }
+        out["data_source"] = ds
+        return out
+    core = _review_core_rows(out.get("core_analysis") or {}, str(subject.get("match_raw") or subject.get("matchKeyword") or ""))
+    generated = str(ds.get("generated_at") or "")
+    try:
+        as_of_year = int(generated[:4]) if generated[:4].isdigit() else dt.datetime.now().year
+    except (ValueError, TypeError):
+        as_of_year = dt.datetime.now().year
+    metrics = _review_metrics(out.get("metrics") or [], core)
+    quality = _quality_report(core)
+    if quality["populated_sections"] == 0:
+        # No business body: keep the assembled empty/failure narrative instead
+        # of replacing it with a generic abstract that implies sections exist.
+        out["core_analysis"] = core
+        out["metrics"] = metrics
+        ds["quality_report"] = quality
+        ds["content_revision"] = {
+            "mode": "offline_source_preserving",
+            "source_sha256": source_sha256,
+            "original_generated_at": ds.get("generated_at"),
+            "reviewed_at": reviewed_at or dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+            "scope": "无有效业务章节：保留原始空结果或调用失败说明，不生成业务结论",
+        }
+        out["data_source"] = ds
+        return out
+    insights = build_insights(subject, core, metrics, as_of_year=as_of_year)
+    abstract = build_abstract(subject, core, metrics)
+    old_abstract = str(out.get("abstract") or "")
+    marker = "明细含未完整采集的来源"
+    if marker in old_abstract:
+        # attach_pagination() appends this disclosure after the review; keep it
+        # when an already-attached report is reviewed again offline.
+        abstract += old_abstract[old_abstract.index(marker):]
+    out["core_analysis"] = core
+    out["metrics"] = metrics
+    out["insights"] = insights
+    out["abstract"] = abstract
+    out["summary"] = abstract
+    gap_lines = []
+    if ds.get("tool_errors"):
+        gap_lines = ["数据缺口：" + "、".join(str(item) for item in ds["tool_errors"]) + "未成功返回，本报告仅呈现成功维度。"]
+    insight_lines = [i.get("interpretation") for i in insights][:5] or [abstract[:120]]
+    out["executive_summary"] = gap_lines + insight_lines
+    out["representative_records"] = build_records(core)
+    ds["quality_report"] = quality
+    ds["content_revision"] = {
+        "mode": "offline_source_preserving",
+        "source_sha256": source_sha256,
+        "original_generated_at": ds.get("generated_at"),
+        "reviewed_at": reviewed_at or dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "scope": "清洗上游标记/HTML摘录；重算趋势可比性；未新增查询、未改写展会日期与名称",
+    }
+    out["data_source"] = ds
+    return out
+
+
 @paid_call_scope
 def build_payload(
     raw: str,
@@ -838,7 +1115,7 @@ def build_payload(
     if raw and not resolved.get("resolved") and not search_mode:
         subject = build_subject(raw, resolved, keyword_type, False)
         subject["blocked_reason"] = resolved.get("reason") or "企业主体未唯一解析"
-        return _assemble(subject, build_core_analysis(None, None, None, None), [], dry_run=False)
+        return apply_content_review(_assemble(subject, build_core_analysis(None, None, None, None), [], dry_run=False))
 
     participation: Any = None if not raw or not resolved.get("resolved") else collect_detail_pages(
         _safe_call, T_PARTICIPATION,
@@ -887,10 +1164,10 @@ def build_payload(
     # --- Enterprise profile enrichment (from fuzzy_search) ---
     _enrich_metrics_with_profile(metrics, resolved.get("record") if isinstance(resolved, dict) else None)
     _derive_core_metrics(metrics, core if isinstance(core, dict) else {})
-    return attach_pagination(
-        _assemble(subject, core, metrics, dry_run=False, search_mode=search_mode, tool_errors=_failed_tools({"展会参与": participation, "展馆查询": venue, "展会查询": exhibition, "展商查询": exhibitor})),
-        {"展会参与明细": participation, "展馆查询": venue, "展会查询": exhibition, "展商查询": exhibitor},
+    report = apply_content_review(
+        _assemble(subject, core, metrics, dry_run=False, search_mode=search_mode, tool_errors=_failed_tools({"展会参与": participation, "展馆查询": venue, "展会查询": exhibition, "展商查询": exhibitor}))
     )
+    return attach_pagination(report, {"展会参与明细": participation, "展馆查询": venue, "展会查询": exhibition, "展商查询": exhibitor})
 
 
 def _fair_search_subject(keyword: str, mode: str) -> Dict[str, Any]:
@@ -919,7 +1196,7 @@ def _build_fair_search_payload(keyword: str, page_size: int, max_pages: int = 1)
     subject = _fair_search_subject(keyword, "fair_search")
     if not keyword.strip():
         subject["blocked_reason"] = "展会检索关键词为空"
-        return _assemble(subject, build_core_analysis(None, None, None, None), [], dry_run=False, search_mode=True)
+        return apply_content_review(_assemble(subject, build_core_analysis(None, None, None, None), [], dry_run=False, search_mode=True))
     exhibition = collect_detail_pages(
         _safe_call, T_EXHIBITION,
         {"matchKeyword": keyword, "pageSize": page_size},
@@ -928,7 +1205,7 @@ def _build_fair_search_payload(keyword: str, page_size: int, max_pages: int = 1)
     )
     core = build_core_analysis(None, None, exhibition, None, search_keyword=keyword)
     metrics = build_metrics(None, None, exhibition, None)
-    return attach_pagination(
+    report = apply_content_review(
         _assemble(
             subject,
             core,
@@ -936,9 +1213,9 @@ def _build_fair_search_payload(keyword: str, page_size: int, max_pages: int = 1)
             dry_run=False,
             search_mode=True,
             tool_errors=_failed_tools({"展会查询": exhibition}),
-        ),
-        {"展会查询": exhibition},
+        )
     )
+    return attach_pagination(report, {"展会查询": exhibition})
 
 
 @paid_call_scope
@@ -993,7 +1270,7 @@ def _build_fair_exhibitors_payload(keyword: str, page_size: int, fair_result_ind
     core = build_core_analysis(None, None, exhibition, None, fair_exhibitor_payload, search_keyword=keyword)
     metrics = build_metrics(None, None, exhibition, None, fair_exhibitor_payload)
     tool_errors = _failed_tools({"展会查询": exhibition, "指定展会参展企业": fair_exhibitor_payload})
-    return attach_pagination(
+    report = apply_content_review(
         _assemble(
             subject,
             core,
@@ -1001,9 +1278,9 @@ def _build_fair_exhibitors_payload(keyword: str, page_size: int, fair_result_ind
             dry_run=False,
             search_mode=True,
             tool_errors=tool_errors,
-        ),
-        {"展会筛选候选": exhibition, "参展企业": fair_exhibitor_payload},
+        )
     )
+    return attach_pagination(report, {"展会筛选候选": exhibition, "参展企业": fair_exhibitor_payload})
 
 
 # --------------------------------------------------------------------------- #

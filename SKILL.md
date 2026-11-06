@@ -84,6 +84,33 @@ description: Use for generating a professional exhibition big-data report (展�
 5. **渲染三件套**：`compose_report.py --enterprise ... --output ... --report-output ...` 直接产出 JSON + HTML + Markdown；或 `render_report.py --input ... --output ...` 重渲染。
 6. **返回路径**：返回 JSON、HTML、Markdown 文件路径，以及企业全称映射与数据口径（含模式标注）。
 
+## 内容整理与交付审校
+
+1. **日期按原值**：`fairBeginTime`/`fairEndTime` 只做“开始 至 结束”拼接；只有开始日期时保留单日期，不补结束日，不推断展期天数。
+2. **开放标记不是状态**：`isOpen=1` 是上游开放标记，未说明“开放中/已结束”。报告写“1（上游开放标记，未说明含义）”，不据此判断当前是否可参展。
+3. **记录数不是展会品牌数**：同一展会的不同届次会作为多条记录返回。可按名称去除年份/届次做文本归组，但只作核对线索，不合并记录、不认定同一主办方。
+4. **趋势要可比**：先按年份排序；年度不连续、相邻年度样本不足 2 条、或最新年度未满全年时，不做同比。峰值并列时列出全部年份，不静默取第一条。
+5. **检索相关性**：关键词命中只为“名称命中/简介命中/待核”，标题未命中的记录保留并提示核对正文；命中数不是展会数或届次数。
+6. **亮点是原文摘录**：上游简介可能含 HTML 与截断；去除标签、保留原文与省略号，不改写成“展会亮点总结”，也不把简介当已核实事实。
+7. **内容整理（正常生成 + 离线修订）**：正常 `build_payload`（含展会检索、指定展会参展企业分支）与 `--dry-run` 样例生成在写 JSON/HTML/MD 前自动调用 `apply_content_review(report)`；同一函数也可基于已有 JSON 清洗标记/HTML、重算可比趋势与并列峰值、标注相关性，不调用 MCP、不改展会日期与名称。离线修订件写 `output/content-quality-review/<case>/`。
+
+```bash
+python - <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+sys.path.insert(0, "scripts")
+import compose_report as cr
+src = Path("examples/01-enterprise-participation/report.json")
+raw = src.read_bytes()
+report = cr.apply_content_review(json.loads(raw), source_sha256=hashlib.sha256(raw).hexdigest())
+out = Path("output/content-quality-review/01-enterprise-participation")
+out.mkdir(parents=True, exist_ok=True)
+(out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+PY
+```
+
+- **渲染前置检查**：执行会产出含图表 HTML / PDF 的报告命令前，先验证 `node --version` 与本 skill 自带 `assets/vendor/echarts.min.js` 存在；内嵌静态 SVG 的生成需要 Node.js（推荐当前 LTS，无需 npm 包），缺失时报告生成明确报错。查看已生成的 HTML 与 Markdown 输出不需要 Node。
+
 ## 脚本速查
 
 ```bash
@@ -148,7 +175,7 @@ python scripts/render_report.py --input output/exhibition.json --output output/e
 
 - `subject`：企业全称、匹配关键词、主体类型、是否自动补全、是否市场检索模式。
 - `abstract` / `summary`：封面摘要与详细摘要。
-- `metrics`：展会参与、展馆、展会、展商的命中条数等指标卡。
+- `metrics`：展会参与（上游总量）、展馆/展会/展商命中条数；企业模式的展馆数、CR3、活跃年份数、最新年份、峰值仅标“展示样本”，不冒充全量。
 - `caliber`：匹配对象、匹配方式（含模式标注）、数据范围、产品、局限。
 - `core_analysis`：展会参与（表）、展馆查询（表）、展会查询（表）、展商查询（表）。
 - `representative_records`：代表性展会 / 展商记录。
